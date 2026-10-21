@@ -4,7 +4,7 @@ AI-powered competitive analysis, built on real strategy frameworks. A company na
 
 Portfolio project by Matan Lehrer (backend/AI engineer, MBA). Target bar: senior to staff level.
 
-**Current stage:** 2 — Data and LLM access. See `docs/roadmap.md`. Stages 0 (design) and 1 (skeleton) are done and verified; design decisions live in `docs/design.md` and `docs/adr/`.
+**Current stage:** 3 — One company, end to end (thin slice). See `docs/roadmap.md`. Stages 0-2 are done and verified; design decisions live in `docs/design.md` and `docs/adr/`.
 
 ## Read first
 - `docs/design.md` — requirements, NFRs, entities, tables, API, data flow, architecture. Source of truth.

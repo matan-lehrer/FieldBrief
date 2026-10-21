@@ -19,11 +19,11 @@ Each stage ends with something that runs. Update the checkboxes as items finish.
 Repo, docker compose (Postgres, RabbitMQ, SearXNG; Langfuse later), Alembic migrations for the 8 tables, CI (lint + typecheck + tests), CLI stub.
 **Done when:** `docker compose up` runs and `fieldbrief --help` works. ✅ Verified 2026-10-22: all 3 services healthy, migration applies and rolls back cleanly against real Postgres, `fieldbrief --help`/`version` work. Postgres host port is 5433 (5432 is often already taken by a system install).
 
-## 2. Data and LLM access  ← current
+## 2. Data and LLM access
 Fetch layer (SearXNG search, httpx + trafilatura, URL/hash dedup), EDGAR client, Wikidata resolution, LLM gateway (routing, budget, cost logging).
-**Done when:** the CLI resolves "Wix" and fetches a clean source.
+**Done when:** the CLI resolves "Wix" and fetches a clean source. ✅ Verified 2026-10-22: `fieldbrief resolve Wix` live — correctly disambiguates the company from the Essex village/surname (ADR 0011's exact test case), fetches and cleans wix.com. EDGAR (ticker->CIK->filings) and LLM gateway (routing, budget, rate limit, schema validation+repair, cost settlement via LiteLLM) built and tested (36 unit tests, 4 live integration tests).
 
-## 3. One company, end to end (thin slice)
+## 3. One company, end to end (thin slice)  ← current
 Planner -> researchers -> verifier for a single company; claims + sources saved; minimal report (profile + SWOT with citations).
 **Done when:** `fieldbrief analyze Wix --competitors 0` produces a cited JSON report.
 
