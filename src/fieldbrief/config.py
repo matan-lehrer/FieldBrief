@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     report_budget_usd_standard: float = 0.50
     report_time_budget_seconds: int = 300
 
-    database_url: str = "postgresql+asyncpg://fieldbrief:fieldbrief@localhost:5432/fieldbrief"
+    database_url: str = "postgresql+asyncpg://fieldbrief:fieldbrief@localhost:5433/fieldbrief"
     rabbitmq_url: str = "amqp://fieldbrief:fieldbrief@localhost:5672/"
     searxng_url: str = "http://localhost:8080"
 

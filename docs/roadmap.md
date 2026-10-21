@@ -15,11 +15,11 @@ Each stage ends with something that runs. Update the checkboxes as items finish.
 
 **Done when:** the whole flow can be explained input -> report with no TBDs.
 
-## 1. Skeleton  ← current
+## 1. Skeleton
 Repo, docker compose (Postgres, RabbitMQ, SearXNG; Langfuse later), Alembic migrations for the 8 tables, CI (lint + typecheck + tests), CLI stub.
-**Done when:** `docker compose up` runs and `fieldbrief --help` works.
+**Done when:** `docker compose up` runs and `fieldbrief --help` works. ✅ Verified 2026-10-22: all 3 services healthy, migration applies and rolls back cleanly against real Postgres, `fieldbrief --help`/`version` work. Postgres host port is 5433 (5432 is often already taken by a system install).
 
-## 2. Data and LLM access
+## 2. Data and LLM access  ← current
 Fetch layer (SearXNG search, httpx + trafilatura, URL/hash dedup), EDGAR client, Wikidata resolution, LLM gateway (routing, budget, cost logging).
 **Done when:** the CLI resolves "Wix" and fetches a clean source.
 
