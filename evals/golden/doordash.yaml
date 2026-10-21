@@ -1,0 +1,43 @@
+# Golden company 9/10 (ADR 0011). Non-SaaS revenue model, thin margins —
+# stresses financials.profitability.
+name: DoorDash
+public: true
+industry: Logistics / food delivery marketplace
+
+facts:
+  profile.hq_founded:
+    value: "San Francisco, USA; founded 2013"
+    source_url: https://stockanalysis.com/stocks/DASH/
+  profile.employees:
+    value: "~31,000-31,400 as of Jun 2026"
+    source_url: https://stockanalysis.com/stocks/DASH/
+  financials.revenue:
+    value: "TTM ~$14.7B as of 2026-03-31; Q2 2026 revenue $4.45B"
+    source_url: https://stockanalysis.com/stocks/DASH/
+  financials.funding_or_cap:
+    value: "Public (NASDAQ: DASH); market cap figures ranged ~$65.6B-$91.9B across 2026 snapshots"
+    source_url: https://stockanalysis.com/stocks/DASH/
+    tolerance: "very wide — verify against a live quote, do not average"
+
+competitors:
+  - Uber Eats
+  - Grubhub
+  - Instacart
+
+key_points:
+  five_forces:
+    - "High rivalry with Uber Eats and Grubhub (now owned by Wonder) in food delivery"
+    - "Restaurant partners have moderate bargaining power given multi-homing across platforms"
+  vrio:
+    - "Logistics/dasher network density as a scale-dependent resource"
+    - "Expansion into grocery/retail delivery (non-restaurant) as a diversification advantage"
+  swot:
+    - "Opportunity: continued diversification into grocery and retail delivery beyond restaurants"
+    - "Threat: thin margins and continued price-based competition with Uber Eats"
+  recommendations:
+    - "Continue diversifying revenue beyond restaurant delivery into grocery/retail"
+    - "Monitor margin trends given historically thin profitability in food delivery"
+
+known_gaps:
+  - "A clean, single, current market-cap figure (sources disagree by >$25B)"
+  - "A specific dated (last 12 months) DoorDash-specific M&A/competitive news event"

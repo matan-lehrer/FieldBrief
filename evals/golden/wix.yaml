@@ -1,0 +1,45 @@
+# Golden company 1/10 (ADR 0011). Already the worked CLI example (CLAUDE.md).
+name: Wix
+public: true
+industry: Website builder SaaS
+
+facts:
+  profile.hq_founded:
+    value: "Tel Aviv, Israel; founded 2006"
+    source_url: https://www.google.com/finance/quote/WIX:NASDAQ
+  profile.employees:
+    value: "~5,300"
+    source_url: https://www.robinhood.com/stocks/WIX
+    tolerance: "+/- 500; sources range ~5,280-5,340"
+  financials.revenue:
+    value: "TTM ~$2.13B as of 2026-06-30"
+    source_url: https://pitchbook.com/profiles/company/51726-07
+    tolerance: "+/- 10%"
+  financials.funding_or_cap:
+    value: "Public (NASDAQ: WIX); market cap ~$3.4-3.6B as of Sept 2026"
+    source_url: https://pitchbook.com/profiles/company/51726-07
+    tolerance: "wide — sources disagree $3.17B-$4.76B across snapshots; verify against a live quote"
+
+competitors:
+  - Squarespace
+  - Webflow
+  - Shopify
+
+key_points:
+  five_forces:
+    - "Low switching costs for small-business customers raise buyer power"
+    - "Many substitute website builders (Squarespace, Webflow, Shopify) increase rivalry/substitute threat"
+  vrio:
+    - "AI-assisted website generation (Wix Harmony) as a potential differentiator"
+    - "Broad app marketplace / ecosystem as a resource"
+  swot:
+    - "Opportunity: AI website generation reduces time-to-launch for customers"
+    - "Threat: intense competition from Squarespace/Shopify/Webflow"
+    - "Weakness: operating losses despite revenue growth (Q2 2026 results)"
+  recommendations:
+    - "Continue investing in AI-driven site generation to differentiate"
+    - "Address profitability given recent operating losses"
+
+known_gaps:
+  - "Exact current share count / precise market cap (sources disagree by >$1B)"
+  - "Granular segment revenue breakdown"

@@ -1,0 +1,41 @@
+# Golden company 4/10 (ADR 0011). Large private co., funding-not-market-cap path.
+name: Stripe
+public: false
+industry: Fintech / payments
+
+facts:
+  profile.hq_founded:
+    value: "Dual HQ: San Francisco, USA & Dublin, Ireland; founded 2010"
+    source_url: https://techcrunch.com/?p=2477794
+  financials.revenue:
+    value: "Net revenue ~$5.12B (2024, +34% YoY); gross revenue est. ~$19.4B (2025); $1.9T total payment volume (2025)"
+    source_url: https://www.dealstreetasia.com/stories/stripe-valuation-employee-share-sale-473875
+    tolerance: "gross revenue figure is a press estimate, not an audited disclosure"
+  financials.funding_or_cap:
+    value: "~$159B valuation per Feb 2026 employee tender offer; total funding raised ~$9.4-9.8B (private)"
+    source_url: https://www.dealstreetasia.com/stories/stripe-valuation-employee-share-sale-473875
+    tolerance: "a lower $106.7B figure also circulates — unclear timing/context, treat as a known gap"
+
+competitors:
+  - Adyen
+  - PayPal
+  - Checkout.com
+
+key_points:
+  five_forces:
+    - "High rivalry among payment processors (Adyen, PayPal/Braintree, Checkout.com)"
+    - "Low switching costs for smaller merchants but high for deeply integrated enterprise customers"
+  vrio:
+    - "Developer-first API and broad ecosystem integrations as a differentiator"
+    - "Global payment infrastructure and compliance coverage as a resource"
+  swot:
+    - "Opportunity: reported Stripe + Advent International bid for PayPal signals expansion ambitions"
+    - "Threat: intensifying competition from Adyen in enterprise payments"
+    - "Strength: profitable, large-scale payment volume ($1.9T processed in 2025)"
+  recommendations:
+    - "Evaluate the reported PayPal acquisition bid's strategic fit beyond scale"
+    - "Continue enterprise expansion to reduce reliance on SMB/startup segment"
+
+known_gaps:
+  - "Exact current valuation (figures from $106.7B to $159B circulating)"
+  - "Precise net profit margin (described qualitatively as profitable, no hard number)"

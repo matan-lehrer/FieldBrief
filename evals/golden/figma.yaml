@@ -1,0 +1,45 @@
+# Golden company 6/10 (ADR 0011). Recently public (IPO'd 2025-07) — tests
+# freshly-changed financials.funding_or_cap.
+name: Figma
+public: true
+industry: Design SaaS
+
+facts:
+  profile.hq_founded:
+    value: "San Francisco, USA; founded 2012"
+    source_url: https://fourweekmba.com/figma-competitors/
+  profile.employees:
+    value: "~1,700-1,900"
+    source_url: https://www.tradingview.com/symbols/NYSE-FIG/
+    tolerance: "sources disagree (~1,580-1,886)"
+  financials.revenue:
+    value: "Q2 2026 revenue $370.1M (+48% YoY); TTM ~$1.16B as of 2026-03-31"
+    source_url: https://www.tradingview.com/symbols/NYSE-FIG/
+  financials.funding_or_cap:
+    value: "Public (NYSE: FIG, IPO'd 2025-07); market cap ~$13-14B as of Aug 2026"
+    source_url: https://www.tradingview.com/symbols/NYSE-FIG/
+    tolerance: "verify against a live quote"
+
+competitors:
+  - Adobe XD
+  - Canva
+  - Sketch
+
+key_points:
+  five_forces:
+    - "Rivalry intensified by Canva's expansion into design tools and Adobe's Creative Cloud bundling"
+    - "Moderate buyer power from large enterprise design teams negotiating seat pricing"
+  vrio:
+    - "Real-time multiplayer collaborative editing as a hard-to-replicate technical advantage"
+    - "Large existing design-file network effects (teams standardized on Figma) as a resource"
+  swot:
+    - "Threat: Dec 2025 class-action lawsuit alleging Figma used customer design files to train AI models"
+    - "Opportunity: UI3 product update and continued AI feature expansion"
+    - "Weakness: net loss ($112.2M in Q2 2026) despite strong revenue growth"
+  recommendations:
+    - "Resolve AI-training-data litigation risk transparently to preserve customer trust"
+    - "Continue leveraging the collaborative-editing moat against Canva's design-tool expansion"
+
+known_gaps:
+  - "Precise current employee count"
+  - "Minority-shareholder governance influence beyond the founder's ~73.6% voting control"

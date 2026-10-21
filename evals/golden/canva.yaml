@@ -1,0 +1,45 @@
+# Golden company 7/10 (ADR 0011). Non-US HQ, direct Figma competitor —
+# tests the competitor graph.
+name: Canva
+public: false
+industry: Design SaaS
+
+facts:
+  profile.hq_founded:
+    value: "Sydney, Australia; founded 2013"
+    source_url: https://tech-insider.org/figma-vs-canva-2026/
+    tolerance: "one source cites 2012"
+  profile.employees:
+    value: "~10,700 (2026)"
+    source_url: https://getlatka.com/companies/canva
+  financials.revenue:
+    value: "~$3.3-4.0B annualized (2025-2026 estimates)"
+    source_url: https://getlatka.com/companies/canva
+    tolerance: "estimate, wide range"
+  financials.funding_or_cap:
+    value: "Valuation ~$39.6-42B (2025-2026 secondary sales); total funding raised ~$2.4-2.5B (private)"
+    source_url: https://getlatka.com/companies/canva
+    tolerance: "secondary-market valuations vary; 2021 peak was >$60B"
+
+competitors:
+  - Figma
+  - Adobe Express
+  - Affinity
+
+key_points:
+  five_forces:
+    - "Rivalry with Figma intensifying as both expand into each other's core use cases"
+    - "Low switching costs for casual/consumer users increase buyer power"
+  vrio:
+    - "Massive template/asset library and simplicity-first design as a differentiator for non-designers"
+    - "Broad free-tier user base creating network effects and an upsell funnel"
+  swot:
+    - "Opportunity: speculated 2026 IPO would unlock liquidity and fund expansion"
+    - "Threat: Figma's move into more accessible/templated design tools"
+  recommendations:
+    - "Prepare IPO-readiness (audited financials, governance) if the speculated listing is pursued"
+    - "Differentiate further from Figma by deepening non-designer / team-collaboration features"
+
+known_gaps:
+  - "No confirmed IPO filing/prospectus exists yet, so no audited financials"
+  - "Exact current valuation (meaningful range across sources)"

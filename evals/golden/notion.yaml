@@ -1,0 +1,42 @@
+# Golden company 5/10 (ADR 0011). Private, consumer+enterprise crossover positioning.
+name: Notion
+public: false
+industry: Productivity SaaS
+
+facts:
+  profile.hq_founded:
+    value: "San Francisco, USA; founded 2013"
+    source_url: https://www.gend.co/en-ca/blog/notion-vs-confluence
+    tolerance: "sources also cite 2012 and 2016 — genuine conflict, 2013 is most common"
+  financials.revenue:
+    value: "~$500-600M (2025 estimate)"
+    source_url: https://getlatka.com/companies/notion
+    tolerance: "estimate, not an audited disclosure — wide range"
+  financials.funding_or_cap:
+    value: "Total funding ~$343M; last primary round Series C Oct 2021 at $10B; secondary sales valued ~$9.2-11B (2025-2026)"
+    source_url: https://getlatka.com/companies/notion
+    tolerance: "wide — secondary-market valuations, not a primary round"
+
+competitors:
+  - Coda
+  - Confluence
+  - Airtable
+
+key_points:
+  five_forces:
+    - "Low switching costs for note-taking features but higher for deeply embedded workspace data"
+    - "Rivalry from Coda, Confluence, and other all-in-one workspace competitors"
+  vrio:
+    - "Flexible block-based editor and template ecosystem as a differentiator"
+    - "Growing AI feature set (Notion AI) as a potential resource"
+  swot:
+    - "Opportunity: expansion into AI agents, enterprise search, forms/calendar/mail broadens TAM"
+    - "Threat: competition from Confluence (enterprise) and Coda (similar flexible-workspace positioning)"
+  recommendations:
+    - "Clarify enterprise security/compliance story to compete with Confluence"
+    - "Monetize newly launched AI/agent features"
+
+known_gaps:
+  - "Exact current employee count — widest source disagreement in this golden set (1,200 to 7,774 across trackers)"
+  - "Exact current valuation"
+  - "A specific dated news event in the last 12 months"
