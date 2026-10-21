@@ -58,7 +58,8 @@ make test        # pytest
 
 ## Testing
 - Unit tests never call real LLMs or the network. Use recorded fixtures / fakes (respx for HTTP, a fake gateway for LLMs).
-- Integration tests that hit real APIs are marked `@pytest.mark.live` and skipped by default.
+- Integration tests that hit real external APIs are marked `@pytest.mark.live` and skipped by default (`pytest -m live` to run them).
+- `tests/integration/` also has DB repository tests that hit the real local Postgres from `docker compose`. Not `live` (that's for external network) — `make test`/`make check` need `docker compose up -d postgres` first or these fail on connection, not assertions.
 - Quality is measured by the eval harness (`evals/`), not by unit tests.
 
 ## Workflow

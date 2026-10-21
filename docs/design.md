@@ -234,8 +234,10 @@ class ForceAssessment(BaseModel):
 
 
 class FiveForces(BaseModel):
-    forces: list[ForceAssessment]  # exactly 5, one per Literal value
-    freshness: Freshness
+    forces: list[
+        ForceAssessment
+    ] = []  # up to 5; empty until Standard tier researches market.forces
+    freshness: Freshness | None = None
 
 
 class BMCBlock(BaseModel):
@@ -255,8 +257,8 @@ class BMCBlock(BaseModel):
 
 
 class BusinessModelCanvas(BaseModel):
-    blocks: list[BMCBlock]  # up to 9, one per Literal value; omitted when no claims support it
-    freshness: Freshness
+    blocks: list[BMCBlock] = []  # up to 9, one per Literal value; omitted when no claims support it
+    freshness: Freshness | None = None
 
 
 class VRIOResource(BaseModel):
@@ -289,9 +291,11 @@ class PositionedCompany(BaseModel):
 
 
 class PositioningMap(BaseModel):
-    x_axis: PositioningAxis
-    y_axis: PositioningAxis
-    companies: list[PositionedCompany]  # target + competitors
+    x_axis: PositioningAxis | None = (
+        None  # None until positioning is computed (needs >=1 competitor)
+    )
+    y_axis: PositioningAxis | None = None
+    companies: list[PositionedCompany] = []  # target + competitors
 
 
 class SWOTItem(BaseModel):
@@ -320,11 +324,13 @@ class Recommendation(BaseModel):
 
 
 class CoverageGap(BaseModel):
-    """An explicit 'not found', per field-checklist.md rule 1 — never a silently missing section."""
+    """An explicit 'not found' or budget cutoff (ADR 0010), per field-checklist.md
+    rule 1 — never a silently missing section."""
 
     company_id: UUID
     field: str
     attempts: int
+    reason: Literal["not_found", "budget_cutoff"] = "not_found"
 
 
 class ReportMeta(BaseModel):
@@ -351,7 +357,8 @@ class ReportJSON(BaseModel):
 - `Citation.confidence` and `CoverageGap` together mean every field in the report is either cited, marked low-confidence, or an explicit gap — never silently absent (hard constraint 5).
 - `swot_refs` links recommendations back to SWOT items without duplicating `claim_ids`; a recommendation's own evidence trail is still its direct `claim_ids`.
 - Quick-tier reports simply have thinner `companies` and omit `vrio`/`market.size_growth`-derived content for fields outside their tier (field-checklist.md); the schema does not special-case tier, callers just see fewer populated fields and more `gaps`.
-- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§13).
+- Framework sections (`five_forces`, `bmc`, `vrio`, `positioning`) default to empty/`None` rather than being required — a stage 3 (quick-tier, no competitors) report only populates `companies` and `swot`; stage 4 fills the rest. One schema, every tier and stage — never a separate "thin" schema that gets thrown away later.
+- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§13). Real implementation: `src/fieldbrief/reports/schema.py`.
 
 ---
 
