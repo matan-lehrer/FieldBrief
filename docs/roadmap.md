@@ -25,7 +25,7 @@ Fetch layer (SearXNG search, httpx + trafilatura, URL/hash dedup), EDGAR client,
 
 ## 3. One company, end to end (thin slice)  ← current
 Planner -> researchers -> verifier for a single company; claims + sources saved; minimal report (profile + SWOT with citations).
-**Done when:** `fieldbrief analyze Wix --competitors 0` produces a cited JSON report.
+**Done when:** `fieldbrief analyze Wix --competitors 0` produces a cited JSON report. Built and tested (agent graph: plan/research/verify/gap_check/analyze/synthesize/deliver, all 50 tests passing, full graph run verified against real Postgres with network/LLM mocked) — not yet run against a real LLM (needs `LLM_API_KEY`).
 
 ## 4. Competitors and frameworks
 Competitor discovery + graph, parallel fan-out, cache reuse, Five Forces, BMC, VRIO, positioning, SWOT + recommendations linked to claims.

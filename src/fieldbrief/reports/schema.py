@@ -48,13 +48,13 @@ class CompanySnapshot(BaseModel):
     company_id: UUID
     name: str
     is_target: bool
-    description: Citation
+    description: Citation | None = None
     hq: str | None = None
     founded: int | None = None
     employees: Citation | None = None
-    products: Citation
-    customer_segments: Citation
-    revenue_model: Citation
+    products: Citation | None = None
+    customer_segments: Citation | None = None
+    revenue_model: Citation | None = None
     revenue: Citation | None = None
     profitability: Citation | None = None
     funding_or_cap: Citation | None = None
