@@ -17,7 +17,10 @@ def test_version() -> None:
     assert result.stdout.strip() == "0.1.0"
 
 
-def test_analyze_stub_exits_nonzero() -> None:
-    result = runner.invoke(app, ["analyze", "Wix"])
+def test_analyze_rejects_nonzero_competitors_without_any_io() -> None:
+    """Stage 3 only supports --competitors 0 (stage 4 adds real competitors).
+    This must exit before touching Wikidata/DB/LLM — the full pipeline is
+    covered by tests/integration/test_agent_graph.py, with those layers mocked."""
+    result = runner.invoke(app, ["analyze", "Wix", "--competitors", "2"])
     assert result.exit_code == 1
-    assert "Wix" in result.stdout
+    assert "aren't supported yet" in result.stdout

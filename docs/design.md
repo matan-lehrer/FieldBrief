@@ -78,10 +78,12 @@ A cached research set satisfies any request at or below its tier; higher tiers r
 
 ### Confidence model
 `confidence = f(source_reliability, relevance, verified, corroboration)` — derived, never stored.
-- **Source reliability**: from `source_type` + domain (filing/official > major news > blog).
-- **Relevance**: is the source *about* this company, or a passing mention.
-- **Verified**: does the snippet actually support the claim.
-- **Corroboration**: number of independent sources agreeing.
+- **Source reliability**: from `source_type` (filing/official = 1.0, news = 0.8, blog = 0.5).
+- **Relevance**: is the source *about* this company, or a passing mention — `claims.relevance`, set at extraction.
+- **Verified**: does the snippet actually support the claim — ×1.0 if verified, ×0.5 if not (unverified isn't discarded, just discounted; "unknown is acceptable" doesn't mean "unverified is worthless").
+- **Corroboration**: number of independent sources (distinct `source_id`) agreeing on the same field — each one beyond the first adds +0.05, capped so the total never exceeds 1.0.
+
+Concretely: `score = min(1.0, max(reliability·relevance·verified_mult over claims) + 0.05·(corroboration - 1))`. Implementation: `reports/confidence.py`.
 
 ---
 
@@ -210,13 +212,15 @@ class CompanySnapshot(BaseModel):
     company_id: UUID
     name: str
     is_target: bool
-    description: Citation
+    description: (
+        Citation | None
+    )  # None is legitimate — even basic profile fields can be a clean gap
     hq: str | None
     founded: int | None
     employees: Citation | None
-    products: Citation
-    customer_segments: Citation
-    revenue_model: Citation
+    products: Citation | None
+    customer_segments: Citation | None
+    revenue_model: Citation | None
     revenue: Citation | None
     profitability: Citation | None
     funding_or_cap: Citation | None
