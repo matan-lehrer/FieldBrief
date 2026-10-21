@@ -561,7 +561,21 @@ docs/         design, ADRs, roadmap, board
 
 ---
 
-## 14. Glossary
+## 14. Eval plan
+
+Golden-set harness (stage 5), spec'd in ADR 0011 so stage 5 implements against a fixed plan instead of designing it mid-build.
+
+**Golden set:** 10 companies in `evals/golden/<slug>.yaml`, chosen to stress specific design risks — Wix/Wiz (near-duplicate names, entity resolution), Shopify/DoorDash (heavy filings vs. thin-margin marketplace), Stripe/Notion/Canva/Airtable (private, funding-not-market-cap), Figma (recently public), Oatly (non-tech, public financial distress). Full table and rationale in ADR 0011.
+
+**Ground truth per company:** `facts` (checkable fields with a source URL and, for numbers, a tolerance band), `competitors` (expected set), `key_points` (a short checklist per framework, graded by LLM judge — not string match, since SWOT/VRIO/positioning are judgment), `known_gaps` (fields a careful human couldn't find either — a report that invents a value here fails precision, not coverage).
+
+**Metrics -> NFR (design.md §1):** claim precision + citation validity -> Accuracy; framework-quality judge score -> tracked, not gated; cost per report (from the gateway's cost log, ADR 0005) -> Cost; time-to-milestone from the SSE stream -> Latency; 3x-repeated completion rate -> Reliability.
+
+**MVP scope:** the harness produces a committed results table (stage 5's "Done when"); no CI regression gate yet — add one only if eval runs become frequent enough to justify it.
+
+---
+
+## 15. Glossary
 - **Claim** — one fact about one company, from one source, for one field.
 - **Field** — a slot in the research checklist (e.g. `financials.revenue`).
 - **Tier** — effort level: quick / standard / deep.

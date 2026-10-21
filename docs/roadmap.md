@@ -4,18 +4,18 @@ Each stage ends with something that runs. Update the checkboxes as items finish.
 
 **Why this order:** the CLI path (stages 1–5) proves the core value before any API or UI work. A CLI that produces great, eval-backed reports is already a strong portfolio piece.
 
-## 0. Finish the design  ← current
+## 0. Finish the design
 - [x] Requirements, NFRs, BOTE, entities, tables, API, data flow, architecture
-- [ ] Field checklist — approve the DRAFT (`field-checklist.md`)
+- [x] Field checklist — approve the DRAFT (`field-checklist.md`)
 - [x] Report schema — Pydantic models for `report_json`
 - [x] Framework method — inputs, scoring, roll-up into SWOT, positioning axes
 - [x] Agent graph — nodes, state, edges, fan-out, stop conditions, partial reports
-- [ ] Eval plan — golden set (~10 companies), metric definitions per NFR
+- [x] Eval plan — golden set (~10 companies), metric definitions per NFR
 - [x] Model picks — cheap + strong models, prices verified
 
 **Done when:** the whole flow can be explained input -> report with no TBDs.
 
-## 1. Skeleton
+## 1. Skeleton  ← current
 Repo, docker compose (Postgres, RabbitMQ, SearXNG; Langfuse later), Alembic migrations for the 8 tables, CI (lint + typecheck + tests), CLI stub.
 **Done when:** `docker compose up` runs and `fieldbrief --help` works.
 

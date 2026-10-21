@@ -16,3 +16,4 @@ Template: `0000-template.md`.
 | 0008 | Model picks: Gemini 2.5 Flash (cheap) + Gemini 2.5 Pro (strong) | Accepted |
 | 0009 | Framework method: per-framework fields, scoring, SWOT roll-up | Accepted |
 | 0010 | Agent graph: nodes, state, fan-out, stop conditions, partial reports | Accepted |
+| 0011 | Eval plan: golden set, ground truth format, metrics | Accepted |
