@@ -1,0 +1,45 @@
+# Golden company 3/10 (ADR 0011). Large-cap, heavy filings, many competitors.
+name: Shopify
+public: true
+industry: E-commerce SaaS
+
+facts:
+  profile.hq_founded:
+    value: "Ottawa, Canada; founded 2004 (incorporated)"
+    source_url: https://finance.yahoo.com/quote/SHOP/
+  profile.employees:
+    value: "~7,600-8,100"
+    source_url: https://finance.yahoo.com/quote/SHOP/
+    tolerance: "sources disagree (7,600 vs 8,100 as of Apr 2026)"
+  financials.revenue:
+    value: "TTM ~$12.4-13.2B"
+    source_url: https://finance.yahoo.com/quote/SHOP/
+    tolerance: "wide — sources disagree"
+  financials.funding_or_cap:
+    value: "Public (NASDAQ: SHOP); market cap figures ranged ~$147B-$200B across 2026 snapshots"
+    source_url: https://finance.yahoo.com/quote/SHOP/
+    tolerance: "very wide — verify against a live quote, do not average"
+
+competitors:
+  - BigCommerce
+  - WooCommerce
+  - Adobe Commerce
+
+key_points:
+  five_forces:
+    - "Low switching costs for small merchants increase buyer power"
+    - "Intense rivalry from BigCommerce, WooCommerce, Adobe Commerce, and low-end entrants (Wix, Squarespace)"
+  vrio:
+    - "Large app/plugin ecosystem and merchant network effects as a resource"
+    - "Shopify Payments and fulfillment/logistics network as a potential sustained advantage"
+  swot:
+    - "Opportunity: continued e-commerce migration from legacy/on-prem platforms"
+    - "Threat: price competition from lower-cost platforms"
+    - "Strength: large merchant base and ecosystem"
+  recommendations:
+    - "Continue building logistics/fulfillment moat"
+    - "Expand enterprise/B2B offerings to diversify beyond SMB merchants"
+
+known_gaps:
+  - "A specific, dated (last-12-months) news event — none found cleanly in this pass"
+  - "Precise current market cap (sources disagree by >$50B)"

@@ -1,0 +1,42 @@
+# Golden company 10/10 (ADR 0011). Non-tech, public financial distress —
+# stresses events.recent / Threats.
+name: Oatly
+public: true
+industry: Consumer packaged goods (plant-based milk)
+
+facts:
+  profile.hq_founded:
+    value: "Malmo, Sweden; founded 1994"
+    source_url: https://stockanalysis.com/stocks/OTLY/
+  profile.employees:
+    value: "~1,380-1,390 as of Jul 2026"
+    source_url: https://stockanalysis.com/stocks/OTLY/
+  financials.revenue:
+    value: "Q2 2026 revenue $240.1M (+15% YoY, beat $219.5M estimate)"
+    source_url: https://stockanalysis.com/stocks/OTLY/
+  financials.funding_or_cap:
+    value: "Public (NASDAQ: OTLY), small-cap; not expected to be cash-flow-positive for full-year 2026"
+    source_url: https://stockanalysis.com/stocks/OTLY/
+
+competitors:
+  - Alpro
+  - Califia Farms
+  - Planet Oat
+
+key_points:
+  five_forces:
+    - "High rivalry in plant-based milk (Alpro, Califia Farms, Planet Oat, private label)"
+    - "Retailer bargaining power is high given private-label alternatives"
+  vrio:
+    - "Oat-based process technology and brand recognition as a differentiator, though increasingly contested"
+  swot:
+    - "Threat: Greater China operations under strategic review, including a possible carve-out"
+    - "Opportunity: raised FY2026 guidance (8-10% constant-currency growth) signals recovering momentum"
+    - "Weakness: not expected to be cash-flow-positive for full-year 2026"
+  recommendations:
+    - "Resolve the Greater China strategic review to stabilize international strategy"
+    - "Prioritize a path to sustained profitability given persistent cash-flow challenges"
+
+known_gaps:
+  - "Exact current analyst consensus/share price"
+  - "Precise terms of the Greater China strategic review (still unresolved)"

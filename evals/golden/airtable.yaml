@@ -1,0 +1,46 @@
+# Golden company 8/10 (ADR 0011). Mid-size, thinner public sourcing — and,
+# since this was last decided (2026-10-21), acquired by Bending Spoons
+# (closed 2026-08-04) at a steep markdown from its $11B peak. Good test of
+# whether research surfaces a major, recent status change.
+name: Airtable
+public: false
+industry: Productivity SaaS — acquired by Bending Spoons, closed 2026-08-04
+
+facts:
+  profile.hq_founded:
+    value: "San Francisco, USA; founded 2012"
+    source_url: https://stockanalysis.com/private/airtable/
+  profile.employees:
+    value: "~830-950 (pre-acquisition, 2026)"
+    source_url: https://stockanalysis.com/private/airtable/
+    tolerance: "one outlier source says ~695"
+  financials.revenue:
+    value: "ARR ~$478M (2024, +27% YoY from $375M in 2023)"
+    source_url: https://stockanalysis.com/private/airtable/
+    tolerance: "no later official figure found — may be stale by eval time"
+  financials.funding_or_cap:
+    value: "Acquired by Bending Spoons for $2.25B (closed 2026-08-04), down from an $11B Dec 2021 peak valuation; ~$1.4B total funding raised prior"
+    source_url: https://dealroom.co/charts/airtable-bending-spoons.html
+
+competitors:
+  - Smartsheet
+  - Monday.com
+  - Notion
+
+key_points:
+  five_forces:
+    - "Rivalry from Monday.com and Smartsheet in flexible work-management"
+    - "Low switching costs for teams not deeply embedded with Airtable's API/automations"
+  vrio:
+    - "Spreadsheet-database hybrid model as a differentiator, though increasingly matched by competitors"
+  swot:
+    - "Threat/Weakness: steep valuation markdown from $11B to $2.25B signals competitive/growth struggles"
+    - "Opportunity: Bending Spoons acquisition could bring new product/distribution resources"
+    - "Threat: intensifying competition from Monday.com, Smartsheet, and Notion's database features"
+  recommendations:
+    - "Clarify product roadmap and independence under new Bending Spoons ownership"
+    - "Re-establish differentiation against Notion and Monday.com, which have closed feature gaps"
+
+known_gaps:
+  - "Exact current (post-acquisition) headcount and go-forward financials"
+  - "Precise acquisition terms beyond the headline $2.25B price"
