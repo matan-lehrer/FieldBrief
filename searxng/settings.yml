@@ -1,0 +1,18 @@
+# Overrides on top of SearXNG's built-in defaults (use_default_settings: true).
+# https://docs.searxng.org/admin/settings/
+#
+# Local dev only: fetch/search.py calls the JSON API directly, so `json` must be
+# enabled. The rate limiter is off because this instance isn't public — only the
+# fieldbrief worker talks to it, inside the compose network.
+
+use_default_settings: true
+
+server:
+  secret_key: "fieldbrief-local-dev-only-change-if-this-ever-leaves-localhost"
+  limiter: false
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
