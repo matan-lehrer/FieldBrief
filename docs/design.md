@@ -333,7 +333,7 @@ class ReportJSON(BaseModel):
 - `Citation.confidence` and `CoverageGap` together mean every field in the report is either cited, marked low-confidence, or an explicit gap — never silently absent (hard constraint 5).
 - `swot_refs` links recommendations back to SWOT items without duplicating `claim_ids`; a recommendation's own evidence trail is still its direct `claim_ids`.
 - Quick-tier reports simply have thinner `companies` and omit `vrio`/`market.size_growth`-derived content for fields outside their tier (field-checklist.md); the schema does not special-case tier, callers just see fewer populated fields and more `gaps`.
-- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§12).
+- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§13).
 
 ---
 
@@ -370,7 +370,25 @@ An `organized: false` sustained-advantage resource is a strong candidate for a r
 
 ---
 
-## 7. API
+## 7. Agent graph
+
+One LangGraph per report (ADR 0001); nodes, fan-out, and stop conditions are fixed by ADR 0010.
+
+**Nodes:** `plan` -> `research` -> `verify` -> `gap_check` (loops back to `plan` or advances) -> `analyze` -> `synthesize` (join) -> `deliver`.
+
+**Fan-out is two-level:** outer, over companies (target + competitors) — each company runs its own `plan -> research -> verify -> gap_check` loop in parallel and reaches `analyze` on its own schedule (pipelined, per §9 step 7); inner, over that company's checklist fields within `research`/`verify`. `synthesize` joins on every company's `analyze` finishing, since Five Forces and positioning need the full set.
+
+**VRIO and BMC are target-only** — computed inside the target's `analyze` call; competitor `analyze` calls only build `CompanySnapshot` (comparison data, not a full breakdown).
+
+**Stop conditions** (checked in `gap_check`, every loop capped per `CLAUDE.md`): retry rounds per tier (quick 1 / standard 2 / deep 3), 2 attempts per field before it's an explicit "not found," the gateway's cost budget, and the tier's time budget (§1 Effort tiers). A per-field cap just resolves that field as "not found"; a report-wide cap (cost/time) advances every company branch immediately, short-circuiting fields that hadn't reached their own attempt cap yet.
+
+**Partial reports:** `REPORTS.status` is `done` when every gap is a clean "not found" (attempt cap reached), `partial` when a report-wide budget/time cap cut off a field before its own attempt cap, `failed` only for infrastructure errors with nothing to resume — missing data is always `partial`, never `failed` (hard constraint 5).
+
+**Speculative pre-warm** (§9 step 2) runs `plan -> research -> verify` per company with no `report_id` — it only needs to warm the shared claims cache (ADR 0004); the later full run's `plan` finds the warmed claims already fresh.
+
+---
+
+## 8. API
 
 ```
 POST   /companies/resolve            {query} -> Company[]
@@ -389,7 +407,7 @@ DELETE /reports/{id}                          -> cancel / delete
 
 ---
 
-## 8. Data flow
+## 9. Data flow
 
 1. **Resolve** — query -> candidates (Wikidata, aliases) -> user confirms
 2. **Speculative start** — research the target + likely competitors right away
@@ -433,7 +451,7 @@ Refresh starts at Plan. Cost + time budget checked at every LLM call.
 
 ---
 
-## 9. Architecture
+## 10. Architecture
 
 ```
 client -> API gateway (nginx: TLS, LB, rate limit) -> API service (FastAPI: resolve, reports, SSE, auth)
@@ -480,7 +498,7 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 
 ---
 
-## 10. Design decisions (summary — details in `docs/adr/`)
+## 11. Design decisions (summary — details in `docs/adr/`)
 - **Orchestrated, not choreographed:** one LangGraph per report, stateless nodes, state checkpointed in Postgres. (ADR 0001)
 - **Job queue, not Kafka:** long discrete jobs need per-job ack and retry. Kafka only if event fan-out is added. (ADR 0002)
 - **RabbitMQ for jobs and progress, no Valkey:** durable queue, priorities, native pub/sub; research cache is Postgres. (ADR 0006)
@@ -490,6 +508,7 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 - **Tagged claims for Five Forces, VRIO and BMC** instead of per-dimension fields — one research pass, claims tagged by sub-dimension. (ADR 0007)
 - **Gemini 2.5 Flash (cheap) + Pro (strong)** as the model picks, one provider for MVP. (ADR 0008)
 - **Fixed SWOT roll-up rules and positioning axes** for MVP; per-industry axes deferred. (ADR 0009)
+- **Two-level fan-out** (company, then field within it); VRIO/BMC target-only; pre-warm needs no `report_id`. (ADR 0010)
 - **Nodes pass IDs, not data** — any stage can become a service later; extract only stages with different resource needs (fetch, PDF).
 - **Latency:** cache hits, speculative start, pipelined stages, per-fetch timeouts, cost + time budgets, progressive rendering.
 - **Security:** fetched content is untrusted; strict-schema extraction only.
@@ -500,7 +519,7 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 
 ---
 
-## 11. MVP stack
+## 12. MVP stack
 
 | Layer | Pick | Why |
 |---|---|---|
@@ -522,7 +541,7 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 
 ---
 
-## 12. Planned repo layout
+## 13. Planned repo layout
 ```
 src/fieldbrief/
   api/        FastAPI app, routes, SSE
@@ -542,7 +561,7 @@ docs/         design, ADRs, roadmap, board
 
 ---
 
-## 13. Glossary
+## 14. Glossary
 - **Claim** — one fact about one company, from one source, for one field.
 - **Field** — a slot in the research checklist (e.g. `financials.revenue`).
 - **Tier** — effort level: quick / standard / deep.

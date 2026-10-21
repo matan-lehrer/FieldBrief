@@ -9,7 +9,7 @@ Each stage ends with something that runs. Update the checkboxes as items finish.
 - [ ] Field checklist — approve the DRAFT (`field-checklist.md`)
 - [x] Report schema — Pydantic models for `report_json`
 - [x] Framework method — inputs, scoring, roll-up into SWOT, positioning axes
-- [ ] Agent graph — nodes, state, edges, fan-out, stop conditions, partial reports
+- [x] Agent graph — nodes, state, edges, fan-out, stop conditions, partial reports
 - [ ] Eval plan — golden set (~10 companies), metric definitions per NFR
 - [x] Model picks — cheap + strong models, prices verified
 
