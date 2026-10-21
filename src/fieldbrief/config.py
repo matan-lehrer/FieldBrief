@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     report_time_budget_seconds: int = 300
 
     database_url: str = "postgresql+asyncpg://fieldbrief:fieldbrief@localhost:5433/fieldbrief"
-    rabbitmq_url: str = "amqp://fieldbrief:fieldbrief@localhost:5672/"
+    rabbitmq_url: str = "amqp://fieldbrief:fieldbrief@localhost:5673/"
     searxng_url: str = "http://localhost:8080"
 
     sec_user_agent: str = "Fieldbrief/0.1 your-email@example.com"

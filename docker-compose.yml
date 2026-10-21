@@ -22,8 +22,10 @@ services:
       RABBITMQ_DEFAULT_USER: fieldbrief
       RABBITMQ_DEFAULT_PASS: fieldbrief
     ports:
-      - "5672:5672"   # AMQP
-      - "15672:15672" # management UI
+      # 5673/15673 on the host: a system-installed rabbitmq-server often
+      # already owns 5672/15672, the same class of conflict as Postgres/5432.
+      - "5673:5672"   # AMQP
+      - "15673:15672" # management UI
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
