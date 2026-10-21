@@ -333,11 +333,44 @@ class ReportJSON(BaseModel):
 - `Citation.confidence` and `CoverageGap` together mean every field in the report is either cited, marked low-confidence, or an explicit gap — never silently absent (hard constraint 5).
 - `swot_refs` links recommendations back to SWOT items without duplicating `claim_ids`; a recommendation's own evidence trail is still its direct `claim_ids`.
 - Quick-tier reports simply have thinner `companies` and omit `vrio`/`market.size_growth`-derived content for fields outside their tier (field-checklist.md); the schema does not special-case tier, callers just see fewer populated fields and more `gaps`.
-- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§11).
+- This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§12).
 
 ---
 
-## 6. API
+## 6. Framework method
+
+How each framework in §5 gets filled from claims, and how findings roll up into SWOT (ADR 0009).
+
+**Five Forces.** One `ForceAssessment` per force, from claims tagged `value.force` (ADR 0007). `rating` is the force's *pressure intensity* on the company — `high` is bad (strong competitive pressure), `low` is good. A force with zero tagged claims is omitted, not guessed.
+
+**Business Model Canvas.** One `BMCBlock` per populated block. 4 of the 9 blocks map directly to a checklist field (`segments` <- `customers.segments`, `value_propositions` <- `offering.value_prop`, `revenue_streams` <- `revenue.model`, `key_partners` <- `partners.key`); the rest (`channels`, `key_resources`, `customer_relationships`, `key_activities`, `cost_structure`) are filled from any claim the extractor tags `value.bmc_block`, regardless of which field produced it — extends the ADR 0007 convention beyond the two fields it introduced. A block with no tagged claims is omitted.
+
+**VRIO.** One `VRIOResource` per distinct `value.resource` tag (ADR 0007). `competitive_implication` is a straight decision table on the three resource properties, `organized` is reported as its own field but does not change the implication:
+| valuable | rare | inimitable | implication |
+|---|---|---|---|
+| no | — | — | `competitive_disadvantage` |
+| yes | no | — | `parity` |
+| yes | yes | no | `temporary_advantage` |
+| yes | yes | yes | `sustained_advantage` |
+
+An `organized: false` sustained-advantage resource is a strong candidate for a recommendation ("you have it, you're not capturing it") — that's carried in `rationale`, not in the enum.
+
+**Positioning.** MVP fixes two axes for every report: **Price** (low-cost <-> premium, from `pricing.model` + `financials.*`) and **Differentiation breadth** (niche <-> broad, from `offering.products` + `customers.segments` + `offering.value_prop`). Per-industry or per-report axis choice is deferred (`open-questions.md` "Later").
+
+**SWOT roll-up.**
+| Source | Strength | Weakness | Opportunity | Threat |
+|---|---|---|---|---|
+| Five Forces | — | — | `rating: low` | `rating: high` |
+| VRIO | `temporary_advantage`, `sustained_advantage` | `competitive_disadvantage` | — | — |
+| `events.recent`, `market.size_growth`, `environment.regulation` | — | — | by model judgment | by model judgment |
+
+`rating: medium` and VRIO `parity` are omitted from SWOT (still visible in their own section) unless the synthesis model has explicit evidence to the contrary. BMC occasionally seeds a finding (`derived_from: "bmc"`) but isn't a primary SWOT input.
+
+**Recommendations.** 3-7 per report. Every recommendation cites its own `claim_ids` (not just inherited through `swot_refs`) and must reference at least one SWOT item — a recommendation with no `swot_refs` is a synthesis bug.
+
+---
+
+## 7. API
 
 ```
 POST   /companies/resolve            {query} -> Company[]
@@ -356,7 +389,7 @@ DELETE /reports/{id}                          -> cancel / delete
 
 ---
 
-## 7. Data flow
+## 8. Data flow
 
 1. **Resolve** — query -> candidates (Wikidata, aliases) -> user confirms
 2. **Speculative start** — research the target + likely competitors right away
@@ -400,7 +433,7 @@ Refresh starts at Plan. Cost + time budget checked at every LLM call.
 
 ---
 
-## 8. Architecture
+## 9. Architecture
 
 ```
 client -> API gateway (nginx: TLS, LB, rate limit) -> API service (FastAPI: resolve, reports, SSE, auth)
@@ -447,13 +480,16 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 
 ---
 
-## 9. Design decisions (summary — details in `docs/adr/`)
+## 10. Design decisions (summary — details in `docs/adr/`)
 - **Orchestrated, not choreographed:** one LangGraph per report, stateless nodes, state checkpointed in Postgres. (ADR 0001)
 - **Job queue, not Kafka:** long discrete jobs need per-job ack and retry. Kafka only if event fan-out is added. (ADR 0002)
 - **RabbitMQ for jobs and progress, no Valkey:** durable queue, priorities, native pub/sub; research cache is Postgres. (ADR 0006)
 - **Free / open-source stack** except the LLM key. (ADR 0003)
 - **Shared, append-only research** (claims per company x field) as the cache. (ADR 0004)
 - **Model tiering + per-report budgets** in a single gateway. (ADR 0005)
+- **Tagged claims for Five Forces, VRIO and BMC** instead of per-dimension fields — one research pass, claims tagged by sub-dimension. (ADR 0007)
+- **Gemini 2.5 Flash (cheap) + Pro (strong)** as the model picks, one provider for MVP. (ADR 0008)
+- **Fixed SWOT roll-up rules and positioning axes** for MVP; per-industry axes deferred. (ADR 0009)
 - **Nodes pass IDs, not data** — any stage can become a service later; extract only stages with different resource needs (fetch, PDF).
 - **Latency:** cache hits, speculative start, pipelined stages, per-fetch timeouts, cost + time budgets, progressive rendering.
 - **Security:** fetched content is untrusted; strict-schema extraction only.
@@ -464,7 +500,7 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 
 ---
 
-## 10. MVP stack
+## 11. MVP stack
 
 | Layer | Pick | Why |
 |---|---|---|
@@ -486,7 +522,7 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 
 ---
 
-## 11. Planned repo layout
+## 12. Planned repo layout
 ```
 src/fieldbrief/
   api/        FastAPI app, routes, SSE
@@ -506,7 +542,7 @@ docs/         design, ADRs, roadmap, board
 
 ---
 
-## 12. Glossary
+## 13. Glossary
 - **Claim** — one fact about one company, from one source, for one field.
 - **Field** — a slot in the research checklist (e.g. `financials.revenue`).
 - **Tier** — effort level: quick / standard / deep.
