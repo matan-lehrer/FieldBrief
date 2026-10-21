@@ -6,6 +6,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+BMC_BLOCKS = Literal[
+    "segments",
+    "value_propositions",
+    "channels",
+    "customer_relationships",
+    "revenue_streams",
+    "key_resources",
+    "key_activities",
+    "key_partners",
+    "cost_structure",
+]
+
 
 class ExtractedClaim(BaseModel):
     field: str
@@ -15,6 +27,13 @@ class ExtractedClaim(BaseModel):
     )
     relevance: float = Field(
         ge=0, le=1, description="Is this page genuinely about the company, or a passing mention?"
+    )
+    bmc_block: BMC_BLOCKS | None = Field(
+        default=None,
+        description=(
+            "Only if this claim ALSO maps to a Business Model Canvas block (ADR 0009) — "
+            "independent of `field`, e.g. a financials.profitability claim might be cost_structure."
+        ),
     )
 
 
@@ -35,13 +54,15 @@ class ClaimVerification(BaseModel):
 
 class SWOTItemDraft(BaseModel):
     statement: str
-    derived_from: Literal[
-        "five_forces", "vrio", "events", "bmc", "market_size", "regulation", "other"
-    ]
-    source_claim_indices: list[int] = Field(
+    derived_from: Literal["events", "market_size", "regulation", "bmc", "other"] = Field(
         description=(
-            "Indices into the numbered claims list provided in the prompt — never invent an index"
+            "five_forces and vrio are never valid here — those SWOT items are derived "
+            "deterministically from your five_forces/vrio answers below, not authored directly."
         )
+    )
+    source_claim_indices: list[int] = Field(
+        min_length=1,
+        description="Indices into the numbered claims list in the prompt — never invent one",
     )
 
 
@@ -49,19 +70,46 @@ class RecommendationDraft(BaseModel):
     statement: str
     rationale: str
     priority: Literal["high", "medium", "low"]
-    source_claim_indices: list[int]
-    swot_indices: list[int] = Field(
-        min_length=1,
-        description=(
-            "Indices into the combined opportunities+threats list this recommendation "
-            "below is built from, opportunities first then threats (e.g. if there are 2 "
-            "opportunities and 1 threat, valid indices are 0, 1, 2). Every recommendation "
-            "must address at least one — never an empty list."
-        ),
-    )
+    source_claim_indices: list[int] = Field(min_length=1)
 
 
-class SynthesisResult(BaseModel):
-    opportunities: list[SWOTItemDraft] = Field(default_factory=list)
-    threats: list[SWOTItemDraft] = Field(default_factory=list)
+class ForceAssessmentDraft(BaseModel):
+    force: Literal["buyer_power", "supplier_power", "substitutes", "entry_barriers", "rivalry"]
+    rating: Literal["low", "medium", "high"]
+    rationale: str
+    source_claim_indices: list[int] = Field(min_length=1)
+
+
+class VRIOResourceDraft(BaseModel):
+    resource: str
+    valuable: bool
+    rare: bool
+    inimitable: bool
+    organized: bool
+    rationale: str
+    source_claim_indices: list[int] = Field(min_length=1)
+
+
+class PositionedCompanyDraft(BaseModel):
+    company_index: int = Field(description="Index into the numbered companies list in the prompt")
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    source_claim_indices: list[int] = Field(default_factory=list)
+
+
+class PositioningDraft(BaseModel):
+    x_axis_rationale: str
+    y_axis_rationale: str
+    companies: list[PositionedCompanyDraft] = Field(default_factory=list)
+
+
+class FrameworkSynthesisResult(BaseModel):
+    """The one strong-model call that produces every cross-company judgment
+    (design.md's cost model assumes one synthesis call, not four — ADR 0008)."""
+
+    five_forces: list[ForceAssessmentDraft] = Field(default_factory=list)
+    vrio: list[VRIOResourceDraft] = Field(default_factory=list)
+    positioning: PositioningDraft | None = None
+    other_opportunities: list[SWOTItemDraft] = Field(default_factory=list)
+    other_threats: list[SWOTItemDraft] = Field(default_factory=list)
     recommendations: list[RecommendationDraft] = Field(default_factory=list)

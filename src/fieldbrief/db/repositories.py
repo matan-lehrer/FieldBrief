@@ -10,9 +10,19 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fieldbrief.db.models import Claim, Company, Report, ReportClaim, Source, User
+from fieldbrief.db.models import (
+    Claim,
+    Company,
+    CompanyCompetitor,
+    Report,
+    ReportClaim,
+    ReportCompetitor,
+    Source,
+    User,
+)
 
 CLI_LOCAL_USER_EMAIL = "cli-local@fieldbrief.local"
 
@@ -44,15 +54,33 @@ async def get_or_create_company(
     cik: str | None = None,
     industry: str | None = None,
 ) -> Company:
-    """Dedup by domain (unique) when we have one; otherwise this can't safely
-    dedup and just creates a new row — acceptable for MVP (most resolvable
-    companies have a domain; the rare case without one is a known gap, not
-    silently wrong)."""
+    """Dedup by domain (unique) when we have one — an ON CONFLICT upsert, not
+    check-then-insert, since two concurrent report runs (or, within one
+    report, a sequentially-resolved competitor that's also some other
+    report's target) can race to create the same company. Domain-less
+    companies can't be dedup'd this way (NULL never conflicts with NULL in a
+    Postgres unique index) — a known MVP gap, not silently wrong."""
     if domain is not None:
+        insert_stmt = (
+            pg_insert(Company)
+            .values(
+                id=uuid.uuid4(),
+                name=name,
+                domain=domain,
+                aliases=aliases or [],
+                ticker=ticker,
+                cik=cik,
+                industry=industry,
+            )
+            .on_conflict_do_nothing(index_elements=["domain"])
+            .returning(Company.id)
+        )
+        inserted_id = (await session.execute(insert_stmt)).scalar_one_or_none()
+        if inserted_id is not None:
+            return await session.get_one(Company, inserted_id)
+
         result = await session.execute(select(Company).where(Company.domain == domain))
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            return existing
+        return result.scalar_one()
 
     company = Company(
         name=name,
@@ -76,27 +104,44 @@ async def get_or_create_source(
     published_at: datetime | None = None,
 ) -> tuple[Source, bool]:
     """Dedup by URL (unique). Returns (source, content_changed) so callers can
-    skip re-extraction when the hash hasn't moved (design.md §4 invariant)."""
-    result = await session.execute(select(Source).where(Source.url == url))
-    existing = result.scalar_one_or_none()
-    if existing is not None:
-        changed = existing.content_hash != content_hash
-        if changed:
-            existing.content_hash = content_hash
-            existing.fetched_at = _utcnow()
-            await session.flush()
-        return existing, changed
+    skip re-extraction when the hash hasn't moved (design.md §4 invariant).
 
-    source = Source(
-        url=url,
-        title=title,
-        source_type=source_type,
-        published_at=published_at,
-        content_hash=content_hash,
+    An ON CONFLICT upsert, not check-then-insert: companies are researched
+    concurrently (agents/orchestrator.py's per-company fan-out), and two of
+    them can legitimately fetch the same URL (a shared industry page, a
+    Wikipedia article) at the same moment — a plain SELECT-then-INSERT loses
+    that race with a UniqueViolationError, caught by this module's own tests
+    exercising concurrent research.
+    """
+    insert_stmt = (
+        pg_insert(Source)
+        .values(
+            id=uuid.uuid4(),
+            url=url,
+            title=title,
+            source_type=source_type,
+            published_at=published_at,
+            content_hash=content_hash,
+        )
+        .on_conflict_do_nothing(index_elements=["url"])
+        .returning(Source.id)
     )
-    session.add(source)
+    inserted_id = (await session.execute(insert_stmt)).scalar_one_or_none()
+
+    if inserted_id is not None:
+        source = await session.get_one(Source, inserted_id)
+        return source, True  # brand new row — definitely "changed"
+
+    # Someone (possibly a concurrently-running company's research) already
+    # holds this URL — fetch it and compare hashes ourselves.
+    result = await session.execute(select(Source).where(Source.url == url))
+    source = result.scalar_one()
+    changed = source.content_hash != content_hash
+    if changed:
+        source.content_hash = content_hash
+        source.fetched_at = _utcnow()
     await session.flush()
-    return source, True
+    return source, changed
 
 
 async def add_claim(
@@ -168,4 +213,45 @@ async def save_report(
 
     for claim_id in set(claim_ids):
         session.add(ReportClaim(report_id=report_id, claim_id=claim_id))
+    await session.flush()
+
+
+async def add_report_competitors(
+    session: AsyncSession, report_id: uuid.UUID, competitor_ids: list[uuid.UUID]
+) -> None:
+    for competitor_id in set(competitor_ids):
+        session.add(ReportCompetitor(report_id=report_id, company_id=competitor_id))
+    await session.flush()
+
+
+async def upsert_competitor_relationship(
+    session: AsyncSession,
+    company_id: uuid.UUID,
+    competitor_id: uuid.UUID,
+    relevance: float,
+    origin: str = "discovered",
+) -> None:
+    """The competitor graph (design.md §4) — reused across reports, not
+    per-report. Upserts so re-discovering the same pair just refreshes
+    relevance/updated_at rather than duplicating the row (company_id,
+    competitor_id is the primary key)."""
+    result = await session.execute(
+        select(CompanyCompetitor).where(
+            CompanyCompetitor.company_id == company_id,
+            CompanyCompetitor.competitor_id == competitor_id,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        existing.relevance = relevance
+        existing.updated_at = _utcnow()
+    else:
+        session.add(
+            CompanyCompetitor(
+                company_id=company_id,
+                competitor_id=competitor_id,
+                relevance=relevance,
+                origin=origin,
+            )
+        )
     await session.flush()

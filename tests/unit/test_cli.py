@@ -17,10 +17,11 @@ def test_version() -> None:
     assert result.stdout.strip() == "0.1.0"
 
 
-def test_analyze_rejects_nonzero_competitors_without_any_io() -> None:
-    """Stage 3 only supports --competitors 0 (stage 4 adds real competitors).
-    This must exit before touching Wikidata/DB/LLM — the full pipeline is
-    covered by tests/integration/test_agent_graph.py, with those layers mocked."""
-    result = runner.invoke(app, ["analyze", "Wix", "--competitors", "2"])
-    assert result.exit_code == 1
-    assert "aren't supported yet" in result.stdout
+def test_analyze_rejects_invalid_tier_without_any_io() -> None:
+    """Typer/Click validates --tier against the Tier literal before `analyze`'s
+    body ever runs — this must exit without touching Wikidata/DB/LLM. The real
+    pipeline (any tier, with/without competitors) is covered by
+    tests/integration/test_agent_graph.py, with those layers mocked."""
+    result = runner.invoke(app, ["analyze", "Wix", "--tier", "bogus"])
+    assert result.exit_code == 2
+    assert "not one of" in result.output

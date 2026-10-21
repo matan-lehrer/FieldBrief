@@ -64,6 +64,11 @@ select = [
 ]
 ignore = ["S101"]  # assert is fine in tests
 
+[tool.ruff.lint.flake8-bugbear]
+# Typer's documented pattern requires `= typer.Option(...)`/`typer.Argument(...)`
+# as the parameter default — not the B008 mutable-default footgun it normally catches.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
 "evals/**" = ["S"]
