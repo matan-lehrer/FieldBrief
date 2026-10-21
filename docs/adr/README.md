@@ -14,3 +14,4 @@ Template: `0000-template.md`.
 | 0006 | RabbitMQ replaces Valkey + arq | Accepted |
 | 0007 | Tagged claims for multi-dimension fields (Five Forces, VRIO) | Accepted |
 | 0008 | Model picks: Gemini 2.5 Flash (cheap) + Gemini 2.5 Pro (strong) | Accepted |
+| 0009 | Framework method: per-framework fields, scoring, SWOT roll-up | Accepted |
