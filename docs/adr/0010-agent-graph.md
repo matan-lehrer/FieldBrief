@@ -39,6 +39,7 @@ class Gap(BaseModel):
     field: str
     attempts: int
 
+
 class CompanyBranchState(BaseModel):
     company_id: UUID
     is_target: bool
@@ -46,15 +47,16 @@ class CompanyBranchState(BaseModel):
     retry_round: int
     analyzed: bool
 
+
 class ReportState(BaseModel):
     report_id: UUID
     tier: Tier
     stage: Stage  # RESOLVING..RENDERING, drives SSE (design.md "Progress UX")
     companies: list[CompanyBranchState]
     cost_spent_usd: float
-    cost_budget_usd: float      # from the tier's approx. cost (design.md §1)
+    cost_budget_usd: float  # from the tier's approx. cost (design.md §1)
     started_at: datetime
-    time_budget_s: int          # from the tier's approx. time (design.md §1)
+    time_budget_s: int  # from the tier's approx. time (design.md §1)
 ```
 
 **Stop conditions** (every loop capped, per `CLAUDE.md`), checked in `gap_check`, any one trips it:
