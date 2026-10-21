@@ -11,7 +11,7 @@ Each stage ends with something that runs. Update the checkboxes as items finish.
 - [ ] Framework method — inputs, scoring, roll-up into SWOT, positioning axes
 - [ ] Agent graph — nodes, state, edges, fan-out, stop conditions, partial reports
 - [ ] Eval plan — golden set (~10 companies), metric definitions per NFR
-- [ ] Model picks — cheap + strong models, prices verified
+- [x] Model picks — cheap + strong models, prices verified
 
 **Done when:** the whole flow can be explained input -> report with no TBDs.
 

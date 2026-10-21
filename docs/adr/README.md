@@ -13,3 +13,4 @@ Template: `0000-template.md`.
 | 0005 | Single LLM gateway with model tiering and per-report budgets | Accepted (amended by 0006) |
 | 0006 | RabbitMQ replaces Valkey + arq | Accepted |
 | 0007 | Tagged claims for multi-dimension fields (Five Forces, VRIO) | Accepted |
+| 0008 | Model picks: Gemini 2.5 Flash (cheap) + Gemini 2.5 Pro (strong) | Accepted |

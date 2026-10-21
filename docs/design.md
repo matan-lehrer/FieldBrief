@@ -424,6 +424,9 @@ client -> API gateway (nginx: TLS, LB, rate limit) -> API service (FastAPI: reso
 
 ### LLM gateway
 The only path to any LLM. Callers pass `task`, `messages`, output `schema`, `report_id`.
+
+**Model picks (ADR 0008):** cheap tier = Gemini 2.5 Flash (extraction, verification); strong tier = Gemini 2.5 Pro (synthesis only, never in a loop). One provider/API key for MVP; swapping either tier is a gateway config change. Estimated ~$0.39/standard report at the §2 token assumption — re-check live prices before go-live and replace the estimate with real cost-log data once the eval harness (stage 5) runs.
+
 1. Route task + tier -> model (config)
 2. Response cache check (deterministic tasks)
 3. Budget: estimate, reserve from report budget; near limit -> downgrade or stop
@@ -469,7 +472,7 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 | API | FastAPI | Async, typed, auto docs |
 | UI | Jinja2 + HTMX | Real UI, no JS build |
 | Agents | LangGraph + Postgres checkpointer | Fan-out, loops, resume |
-| LLM access | LiteLLM -> provider API | Swap models by config; **only paid item** |
+| LLM access | LiteLLM -> Gemini 2.5 Flash (cheap) / Pro (strong) | Swap models by config; **only paid item** (ADR 0008) |
 | DB | Postgres | All durable state |
 | Queue + progress | RabbitMQ + FastStream | Durable per-job acks, priorities, pub/sub for progress |
 | Search | SearXNG (self-hosted) | Free, no quota |
