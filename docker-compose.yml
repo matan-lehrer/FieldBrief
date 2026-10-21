@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: fieldbrief
       POSTGRES_DB: fieldbrief
     ports:
-      - "5432:5432"
+      # 5433 on the host: 5432 is often already taken by a system-installed Postgres.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
