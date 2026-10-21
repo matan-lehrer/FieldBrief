@@ -10,7 +10,14 @@ requires-python = ">=3.12"
 # tested versions. Planned: fastapi, uvicorn[standard], pydantic, pydantic-settings,
 # sqlalchemy[asyncio], asyncpg, alembic, langgraph, langgraph-checkpoint-postgres,
 # litellm, faststream[rabbit], httpx, trafilatura, playwright, jinja2, typer, langfuse, structlog.
-dependencies = []
+dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
+    "sqlalchemy[asyncio]>=2.1.5",
+    "typer>=0.27.3",
+]
 
 [project.scripts]
 fieldbrief = "fieldbrief.cli:app"

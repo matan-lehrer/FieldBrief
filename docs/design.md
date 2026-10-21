@@ -184,12 +184,14 @@ class Tier(StrEnum):  # mirrors REPORTS.tier
 
 class Freshness(BaseModel):
     """'Data as of' + staleness for one section, per field-checklist.md freshness rules."""
+
     as_of: date
     stale: bool
 
 
 class Confidence(BaseModel):
     """Derived at build time (design.md §3), frozen into the report — never recomputed after."""
+
     score: float = Field(ge=0, le=1)
     corroboration: int  # independent sources agreeing
     verified: bool
@@ -197,12 +199,14 @@ class Confidence(BaseModel):
 
 class Citation(BaseModel):
     """One field's answer for one company: the claims behind it plus their rolled-up confidence."""
+
     claim_ids: list[UUID]
     confidence: Confidence
 
 
 class CompanySnapshot(BaseModel):
     """profile.* / offering.* / financials.* for one company. recent_events is target-only (field-checklist.md)."""
+
     company_id: UUID
     name: str
     is_target: bool
@@ -222,6 +226,7 @@ class CompanySnapshot(BaseModel):
 
 class ForceAssessment(BaseModel):
     """One Five Forces dimension. claim_ids come from claims tagged value.force == force (ADR 0007)."""
+
     force: Literal["buyer_power", "supplier_power", "substitutes", "entry_barriers", "rivalry"]
     rating: Literal["low", "medium", "high"]
     rationale: str
@@ -235,8 +240,15 @@ class FiveForces(BaseModel):
 
 class BMCBlock(BaseModel):
     block: Literal[
-        "segments", "value_propositions", "channels", "customer_relationships",
-        "revenue_streams", "key_resources", "key_activities", "key_partners", "cost_structure",
+        "segments",
+        "value_propositions",
+        "channels",
+        "customer_relationships",
+        "revenue_streams",
+        "key_resources",
+        "key_activities",
+        "key_partners",
+        "cost_structure",
     ]
     statement: str
     claim_ids: list[UUID]
@@ -249,6 +261,7 @@ class BusinessModelCanvas(BaseModel):
 
 class VRIOResource(BaseModel):
     """One resource/advantage. claim_ids come from claims tagged value.resource == resource (ADR 0007)."""
+
     resource: str
     valuable: bool
     rare: bool
@@ -283,7 +296,9 @@ class PositioningMap(BaseModel):
 
 class SWOTItem(BaseModel):
     statement: str
-    derived_from: Literal["five_forces", "vrio", "events", "bmc", "market_size", "regulation", "other"]
+    derived_from: Literal[
+        "five_forces", "vrio", "events", "bmc", "market_size", "regulation", "other"
+    ]
     claim_ids: list[UUID]
 
 
@@ -298,12 +313,15 @@ class Recommendation(BaseModel):
     statement: str
     rationale: str
     priority: Literal["high", "medium", "low"]
-    swot_refs: list[int] = Field(description="indices into the SWOT list(s) this recommendation addresses")
+    swot_refs: list[int] = Field(
+        description="indices into the SWOT list(s) this recommendation addresses"
+    )
     claim_ids: list[UUID]
 
 
 class CoverageGap(BaseModel):
     """An explicit 'not found', per field-checklist.md rule 1 — never a silently missing section."""
+
     company_id: UUID
     field: str
     attempts: int
