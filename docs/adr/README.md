@@ -17,3 +17,4 @@ Template: `0000-template.md`.
 | 0009 | Framework method: per-framework fields, scoring, SWOT roll-up | Accepted |
 | 0010 | Agent graph: nodes, state, fan-out, stop conditions, partial reports | Accepted |
 | 0011 | Eval plan: golden set, ground truth format, metrics | Accepted |
+| 0012 | Competitor discovery: search-grounded extraction, not LLM-proposed | Accepted |

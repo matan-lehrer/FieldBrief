@@ -415,6 +415,11 @@ One LangGraph per report (ADR 0001); nodes, fan-out, and stop conditions are fix
 
 **Speculative pre-warm** (§9 step 2) runs `plan -> research -> verify` per company with no `report_id` — it only needs to warm the shared claims cache (ADR 0004); the later full run's `plan` finds the warmed claims already fresh.
 
+**Implementation notes (stage 3/4):**
+- The outer, per-company fan-out is plain `asyncio.gather` over independent LangGraph runs (`agents/graph.py`'s per-company subgraph: `plan -> research -> gap_check -> analyze`), not a second LangGraph layer — there's no conditional looping at that level, just parallel dispatch and a join, so a state machine adds nothing there. `verify` happens inside `research`, not as its own node, since every extracted claim is verified immediately after extraction.
+- `analyze` builds `CompanySnapshot` deterministically (grouping already-tagged claims by field) rather than as an LLM call — reconciling existing claims into a `Citation` is data wrangling, not judgment, so a call here would only add cost with nothing to decide.
+- `synthesize` is one consolidated strong-model call producing Five Forces, VRIO, positioning, the "other" SWOT sources (events/market_size/regulation/bmc), and recommendations together — not four separate calls — matching the single-synthesis-call cost estimate in ADR 0008.
+
 ---
 
 ## 8. API
@@ -538,6 +543,7 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 - **Gemini 2.5 Flash (cheap) + Pro (strong)** as the model picks, one provider for MVP. (ADR 0008)
 - **Fixed SWOT roll-up rules and positioning axes** for MVP; per-industry axes deferred. (ADR 0009)
 - **Two-level fan-out** (company, then field within it); VRIO/BMC target-only; pre-warm needs no `report_id`. (ADR 0010)
+- **Competitor discovery is search-grounded**, not the model's own knowledge — every competitor traces back to a fetched page. (ADR 0012)
 - **Nodes pass IDs, not data** — any stage can become a service later; extract only stages with different resource needs (fetch, PDF).
 - **Latency:** cache hits, speculative start, pipelined stages, per-fetch timeouts, cost + time budgets, progressive rendering.
 - **Security:** fetched content is untrusted; strict-schema extraction only.

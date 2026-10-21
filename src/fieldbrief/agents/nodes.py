@@ -1,11 +1,18 @@
-"""Graph nodes (ADR 0010). Each node is `async def node(state, **deps) -> dict`
-— a partial state update, per LangGraph convention. Dependencies (DB session,
-LLM gateway, budget, fetcher, HTTP client) are injected by agents/graph.py via
-functools.partial, not carried in state (state is data, per ADR 0001)."""
+"""Per-company research nodes (ADR 0010's inner, per-field fan-out level).
+Each node is `async def node(state, **deps) -> dict` — a partial state update,
+per LangGraph convention. Dependencies (DB session, LLM gateway, budget,
+fetcher, HTTP client) are injected by agents/graph.py via functools.partial,
+not carried in state (state is data, per ADR 0001).
+
+analyze_node builds CompanySnapshot deterministically (see its docstring);
+everything cross-company (Five Forces, BMC, VRIO, positioning, SWOT,
+recommendations) lives in agents/synthesis.py, run once after every company's
+analyze_node completes (agents/orchestrator.py).
+"""
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,15 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fieldbrief.agents import prompts
-from fieldbrief.agents.llm_schemas import ClaimVerification, ExtractionResult, SynthesisResult
+from fieldbrief.agents.field_checklist import MAX_RETRY_ROUNDS as TIER_MAX_RETRY_ROUNDS
+from fieldbrief.agents.field_checklist import Tier, fields_for
+from fieldbrief.agents.llm_schemas import ClaimVerification, ExtractionResult
 from fieldbrief.agents.state import GraphState
 from fieldbrief.db.models import Claim, Source
-from fieldbrief.db.repositories import (
-    add_claim,
-    get_fresh_claims,
-    get_or_create_source,
-    save_report,
-)
+from fieldbrief.db.repositories import add_claim, get_fresh_claims, get_or_create_source
 from fieldbrief.fetch.clean import clean_html, content_hash
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
@@ -30,18 +34,6 @@ from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.confidence import compute_citation
 
-QUICK_TIER_FIELDS = [
-    "profile.description",
-    "profile.hq_founded",
-    "profile.employees",
-    "offering.products",
-    "customers.segments",
-    "revenue.model",
-    "financials.revenue",
-    "events.recent",
-]
-
-MAX_RETRY_ROUNDS = {"quick": 1, "standard": 2, "deep": 3}
 MAX_ATTEMPTS_PER_FIELD = 2
 
 FRESHNESS_MAX_AGE: dict[str, timedelta] = {
@@ -49,6 +41,19 @@ FRESHNESS_MAX_AGE: dict[str, timedelta] = {
     "financials.revenue": timedelta(days=365),
 }
 DEFAULT_FRESHNESS_MAX_AGE = timedelta(days=30)
+
+# Fields with no dedicated search query share the overview/domain fetch
+# (field-checklist.md: most Quick-tier fields and offering.value_prop are
+# typically covered by a company's own "about" page). Everything else gets
+# its own targeted search when it's still a gap after the overview.
+SEARCH_GROUPS: list[tuple[set[str], str]] = [
+    ({"events.recent"}, "{name} news"),
+    ({"pricing.model"}, "{name} pricing"),
+    ({"financials.profitability", "financials.funding_or_cap"}, "{name} funding financials"),
+    ({"market.forces", "resources.advantages"}, "{name} competitive advantage analysis"),
+    ({"environment.regulation"}, "{name} regulation compliance"),
+]
+RESULTS_PER_SEARCH = 4  # enough headroom for a few retry rounds to each see a fresh result
 
 
 def _max_age(field: str) -> timedelta:
@@ -63,8 +68,9 @@ def _source_type(url: str, company_domain: str | None) -> str:
 
 async def plan_node(state: GraphState, *, session: AsyncSession) -> dict[str, Any]:
     company_id = uuid.UUID(state["company_id"])
+    fields = fields_for(state["tier"], state["is_target"])
     gaps = []
-    for field in QUICK_TIER_FIELDS:
+    for field in fields:
         fresh = await get_fresh_claims(session, company_id, field, _max_age(field))
         if not any(c.verified for c in fresh):
             gaps.append({"field": field, "attempts": 0})
@@ -81,17 +87,22 @@ async def research_node(
     http_client: httpx.AsyncClient,
     searxng_url: str,
 ) -> dict[str, Any]:
-    """One research round: fetch 1-2 pages likely to cover the current gaps,
-    extract+verify claims from each. design.md §9: "fetch -> extract claims for
-    all known companies on the page" — one page naturally yields claims for
-    several fields, so this isn't a per-field fetch loop."""
+    """One research round. The overview/domain page covers most fields in one
+    extraction call (design.md §9: "fetch -> extract claims ... for all known
+    companies on the page" — not a per-field fetch loop); fields that need
+    their own angle (pricing, funding, regulation, ...) get one targeted
+    search each, only when they're still a gap. Each retry round picks a
+    different search result (round N -> results[N]) so looping again actually
+    sees new sources instead of re-fetching (and skipping, via content_hash
+    dedup) the same page."""
     if not state["gaps"]:
         return {}
 
     company_id = uuid.UUID(state["company_id"])
     company_name = state["company_name"]
     company_domain = state["company_domain"]
-    gap_fields = [g["field"] for g in state["gaps"]]
+    gap_fields = {g["field"] for g in state["gaps"]}
+    round_index = state["retry_round"]
     claim_ids = list(state["claim_ids"])
 
     urls: list[str] = []
@@ -99,15 +110,22 @@ async def research_node(
         urls.append(company_domain)
     else:
         results = await search(
-            http_client, searxng_url, f"{company_name} company overview", limit=3
+            http_client, searxng_url, f"{company_name} company overview", limit=RESULTS_PER_SEARCH
         )
         if results:
-            urls.append(results[0].url)
+            urls.append(results[min(round_index, len(results) - 1)].url)
 
-    if "events.recent" in gap_fields:
-        news_results = await search(http_client, searxng_url, f"{company_name} news", limit=3)
-        if news_results:
-            urls.append(news_results[0].url)
+    for group_fields, query_template in SEARCH_GROUPS:
+        if not (group_fields & gap_fields):
+            continue
+        results = await search(
+            http_client,
+            searxng_url,
+            query_template.format(name=company_name),
+            limit=RESULTS_PER_SEARCH,
+        )
+        if results:
+            urls.append(results[min(round_index, len(results) - 1)].url)
 
     for url in urls:
         html = await fetcher.fetch(url)
@@ -128,23 +146,24 @@ async def research_node(
 
         extraction = await gateway.call(
             Task.EXTRACT,
-            prompts.extraction_prompt(company_name, cleaned, gap_fields),
+            prompts.extraction_prompt(company_name, cleaned, sorted(gap_fields)),
             ExtractionResult,
             budget,
             report_id=state["report_id"],
             stage="research",
         )
         for extracted in extraction.claims:
-            if extracted.field not in QUICK_TIER_FIELDS:
-                continue  # model must stick to the requested taxonomy
             snippet = cleaned[:500]
+            value = dict(extracted.value)
+            if extracted.bmc_block:
+                value["bmc_block"] = extracted.bmc_block
             claim = await add_claim(
                 session,
                 company_id=company_id,
                 source_id=source.id,
                 field=extracted.field,
                 statement=extracted.statement,
-                value=extracted.value,
+                value=value,
                 snippet=snippet,
                 relevance=extracted.relevance,
             )
@@ -174,8 +193,8 @@ async def gap_check_node(state: GraphState, *, session: AsyncSession) -> dict[st
     return {"gaps": remaining, "retry_round": state["retry_round"] + 1}
 
 
-def should_continue_researching(state: GraphState, *, tier: str) -> str:
-    max_rounds = MAX_RETRY_ROUNDS[tier]
+def should_continue_researching(state: GraphState, *, tier: Tier) -> str:
+    max_rounds = TIER_MAX_RETRY_ROUNDS[tier]
     if state["gaps"] and state["retry_round"] < max_rounds:
         return "loop"
     return "advance"
@@ -184,9 +203,10 @@ def should_continue_researching(state: GraphState, *, tier: str) -> str:
 async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str, Any]:
     """Deterministic CompanySnapshot assembly — grouping already-extracted,
     already-tagged claims by field is data wrangling, not judgment, so no LLM
-    call here (cheaper, and nothing to hallucinate). VRIO/BMC (target-only,
-    Standard tier+) will live here once stage 4 adds those fields — this node
-    is the designed seam for them, not dead weight."""
+    call here (cheaper, and nothing to hallucinate). The real judgment calls
+    (Five Forces, VRIO, positioning, SWOT, recommendations) happen once,
+    across all companies, in agents/synthesis.py after every company's
+    analyze_node has run."""
     company_id = uuid.UUID(state["company_id"])
 
     claims_result = await session.execute(
@@ -215,136 +235,15 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
     snapshot = {
         "company_id": str(company_id),
         "name": state["company_name"],
-        "is_target": True,
+        "is_target": state["is_target"],
         "description": citation_for("profile.description"),
         "products": citation_for("offering.products"),
         "customer_segments": citation_for("customers.segments"),
         "revenue_model": citation_for("revenue.model"),
         "revenue": citation_for("financials.revenue"),
+        "profitability": citation_for("financials.profitability"),
+        "funding_or_cap": citation_for("financials.funding_or_cap"),
         "recent_events": citation_for("events.recent"),
         "freshness": {"as_of": date.today().isoformat(), "stale": False},
     }
     return {"company_snapshot": snapshot}
-
-
-async def synthesize_node(
-    state: GraphState, *, session: AsyncSession, gateway: LLMGateway, budget: Budget
-) -> dict[str, Any]:
-    company_id = uuid.UUID(state["company_id"])
-    claims_result = await session.execute(
-        select(Claim)
-        .where(Claim.company_id == company_id, Claim.verified.is_(True))
-        .order_by(Claim.extracted_at)
-    )
-    claims = list(claims_result.scalars().all())
-
-    opportunities: list[dict[str, Any]] = []
-    threats: list[dict[str, Any]] = []
-    recommendations: list[dict[str, Any]] = []
-
-    if claims:
-        synthesis = await gateway.call(
-            Task.SYNTHESIZE,
-            prompts.synthesis_prompt(state["company_name"], claims),
-            SynthesisResult,
-            budget,
-            report_id=state["report_id"],
-            stage="synthesize",
-        )
-
-        def resolve_ids(indices: list[int]) -> list[str]:
-            return [str(claims[i].id) for i in indices if 0 <= i < len(claims)]
-
-        for item in synthesis.opportunities:
-            claim_ids = resolve_ids(item.source_claim_indices)
-            if not claim_ids:
-                continue  # an uncited finding isn't a finding — drop it, don't invent a citation
-            opportunities.append(
-                {
-                    "statement": item.statement,
-                    "derived_from": item.derived_from,
-                    "claim_ids": claim_ids,
-                }
-            )
-        for item in synthesis.threats:
-            claim_ids = resolve_ids(item.source_claim_indices)
-            if not claim_ids:
-                continue
-            threats.append(
-                {
-                    "statement": item.statement,
-                    "derived_from": item.derived_from,
-                    "claim_ids": claim_ids,
-                }
-            )
-        swot_count = len(opportunities) + len(threats)
-        for rec in synthesis.recommendations:
-            valid_swot_refs = [i for i in rec.swot_indices if 0 <= i < swot_count]
-            if not valid_swot_refs:
-                continue  # ADR 0009: a recommendation with no real swot_refs is a synthesis bug
-            recommendations.append(
-                {
-                    "statement": rec.statement,
-                    "rationale": rec.rationale,
-                    "priority": rec.priority,
-                    "swot_refs": valid_swot_refs,
-                    "claim_ids": resolve_ids(rec.source_claim_indices),
-                }
-            )
-
-    gaps = [
-        {
-            "company_id": state["company_id"],
-            "field": gap["field"],
-            "attempts": gap["attempts"],
-            "reason": "not_found" if gap["attempts"] >= MAX_ATTEMPTS_PER_FIELD else "budget_cutoff",
-        }
-        for gap in state["gaps"]
-    ]
-
-    report_json = {
-        "meta": {
-            "target_company_id": state["company_id"],
-            "competitor_ids": [],
-            "tier": state["tier"],
-            "generated_at": datetime.now(UTC).isoformat(),
-            "data_as_of": date.today().isoformat(),
-        },
-        "companies": [state["company_snapshot"]],
-        "five_forces": {"forces": [], "freshness": None},
-        "bmc": {"blocks": [], "freshness": None},
-        "vrio": [],
-        "positioning": {"x_axis": None, "y_axis": None, "companies": []},
-        "swot": {
-            "strengths": [],
-            "weaknesses": [],
-            "opportunities": opportunities,
-            "threats": threats,
-        },
-        "recommendations": recommendations,
-        "gaps": gaps,
-    }
-    return {"report_json": report_json}
-
-
-async def deliver_node(
-    state: GraphState, *, session: AsyncSession, budget: Budget
-) -> dict[str, Any]:
-    """Persists report_json + report_claims and commits — the one place in the
-    graph that makes a run's results permanent (every other node only flushes,
-    per the DB-layer tests' rollback-at-teardown pattern)."""
-    report_json = state["report_json"] or {}
-    gaps = report_json.get("gaps", [])
-    has_budget_cutoff = any(g["reason"] == "budget_cutoff" for g in gaps)
-    status = "partial" if gaps and has_budget_cutoff else "done"
-
-    await save_report(
-        session,
-        report_id=uuid.UUID(state["report_id"]),
-        report_json=report_json,
-        status=status,
-        cost_usd=budget.spent_usd,
-        claim_ids=[uuid.UUID(cid) for cid in state["claim_ids"]],
-    )
-    await session.commit()
-    return {}

@@ -4,7 +4,8 @@ import json
 import httpx
 import typer
 
-from fieldbrief.agents.graph import build_graph
+from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT, Tier
+from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.config import settings
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
 from fieldbrief.db.session import SessionFactory
@@ -24,18 +25,22 @@ app = typer.Typer(
 @app.command()
 def analyze(
     company: str = typer.Argument(..., help="Company name to analyze, e.g. 'Wix'"),
+    tier: Tier = typer.Option("standard", "--tier", help="quick, standard, or deep"),
     competitors: int = typer.Option(
-        0, "--competitors", help="Number of competitors (stage 3: 0 only)"
+        -1, "--competitors", help="Number of competitors (default: the tier's own count)"
     ),
 ) -> None:
     """Analyze a company and produce a cited strategy report."""
-    if competitors != 0:
-        typer.echo("Competitors aren't supported yet (stage 4) — pass --competitors 0.")
-        raise typer.Exit(code=1)
-    asyncio.run(_analyze(company))
+    competitor_count = competitors if competitors >= 0 else TIER_COMPETITOR_COUNT[tier]
+    budget_by_tier = {
+        "quick": settings.report_budget_usd_standard * 0.2,
+        "standard": settings.report_budget_usd_standard,
+        "deep": settings.report_budget_usd_standard * 4,
+    }
+    asyncio.run(_analyze(company, tier, competitor_count, budget_by_tier[tier]))
 
 
-async def _analyze(company_name: str) -> None:
+async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_usd: float) -> None:
     async with httpx.AsyncClient(headers={"User-Agent": DEFAULT_USER_AGENT}) as wikidata_client:
         candidates = await search_candidates(wikidata_client, company_name, limit=5)
         if not candidates:
@@ -44,63 +49,54 @@ async def _analyze(company_name: str) -> None:
         best = await pick_company_like(wikidata_client, candidates) or candidates[0]
         details = await get_company_details(wikidata_client, best.qid)
 
-    typer.echo(f"Resolved to: {details.name} ({details.qid})")
+        typer.echo(f"Resolved to: {details.name} ({details.qid})")
 
-    budget = Budget(limit_usd=settings.report_budget_usd_standard)
-    gateway = LLMGateway()
-    fetcher = Fetcher()
-    http_client = httpx.AsyncClient()
+        budget = Budget(limit_usd=budget_usd)
+        gateway = LLMGateway()
+        fetcher = Fetcher()
+        http_client = httpx.AsyncClient()
 
-    try:
-        async with SessionFactory() as session:
-            user = await get_or_create_cli_user(session)
-            company = await get_or_create_company(
-                session,
-                name=details.name,
-                domain=details.domain,
-                aliases=details.aliases,
-                ticker=details.ticker,
-                cik=details.cik,
-                industry=details.industry,
-            )
-            report = await create_report(
-                session, user_id=user.id, target_company_id=company.id, tier="quick"
-            )
-            await session.commit()
+        try:
+            async with SessionFactory() as session:
+                user = await get_or_create_cli_user(session)
+                company = await get_or_create_company(
+                    session,
+                    name=details.name,
+                    domain=details.domain,
+                    aliases=details.aliases,
+                    ticker=details.ticker,
+                    cik=details.cik,
+                    industry=details.industry,
+                )
+                report = await create_report(
+                    session, user_id=user.id, target_company_id=company.id, tier=tier
+                )
+                await session.commit()
 
-            typer.echo(
-                f"Report {report.id} started (tier=quick, budget=${budget.limit_usd:.2f})..."
-            )
+                typer.echo(
+                    f"Report {report.id} started (tier={tier}, competitors={competitor_count}, "
+                    f"budget=${budget.limit_usd:.2f})..."
+                )
 
-            graph = build_graph(
-                session=session,
-                gateway=gateway,
-                budget=budget,
-                fetcher=fetcher,
-                http_client=http_client,
-                searxng_url=settings.searxng_url,
-                tier="quick",
-            )
-            result = await graph.ainvoke(
-                {
-                    "report_id": str(report.id),
-                    "company_id": str(company.id),
-                    "company_name": company.name,
-                    "company_domain": company.domain,
-                    "tier": "quick",
-                    "retry_round": 0,
-                    "gaps": [],
-                    "claim_ids": [],
-                    "company_snapshot": None,
-                    "report_json": None,
-                }
-            )
-    finally:
-        await fetcher.aclose()
-        await http_client.aclose()
+                report_json = await run_report(
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    wikidata_client=wikidata_client,
+                    searxng_url=settings.searxng_url,
+                    report_id=report.id,
+                    target_company=company,
+                    tier=tier,
+                    competitor_count=competitor_count,
+                )
+        finally:
+            await fetcher.aclose()
+            await http_client.aclose()
 
     typer.echo(f"\nDone. Cost: ${budget.spent_usd:.4f} / ${budget.limit_usd:.2f}")
-    typer.echo(json.dumps(result["report_json"], indent=2))
+    typer.echo(json.dumps(report_json, indent=2))
 
 
 @app.command()
