@@ -1,6 +1,6 @@
-# Field checklist (DRAFT — not yet approved)
+# Field checklist
 
-The facts the planner must find per company. Drives the gap check, the cache (`claims.field`), coverage metrics, and framework inputs.
+**Approved 2026-10-21.** The facts the planner must find per company. Drives the gap check, the cache (`claims.field`), coverage metrics, and framework inputs — don't add/remove/retier a field without checking ripple effects in `design.md` §5-7.
 
 **T** = target, **C** = competitor (light subset). Tiers are cumulative: Quick < Standard < Deep.
 

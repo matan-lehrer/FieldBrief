@@ -2,11 +2,8 @@
 
 Undecided items. Don't decide these silently in code — raise them, decide, then record the decision in `design.md` (and an ADR if it's significant).
 
-## Stage 0 (blocking implementation)
-1. **Field checklist** — approve the DRAFT (the two sub-items are resolved, see `field-checklist.md` "Resolved" and ADR 0007).
-2. **Eval plan** — golden set (~10 companies, mix of public/private, sizes, industries), ground-truth format, metric definitions mapped to each NFR.
-
-Report schema is decided — see `design.md` §5 and ADR 0007. Framework method is decided — see `design.md` §6 and ADR 0009. Model picks are decided — see `design.md` "LLM gateway" and ADR 0008. Agent graph is decided — see `design.md` §7 and ADR 0010.
+## Stage 0 — all resolved
+Field checklist approved (`field-checklist.md`, ADR 0007). Report schema: `design.md` §5, ADR 0007. Framework method: `design.md` §6, ADR 0009. Model picks: `design.md` "LLM gateway", ADR 0008. Agent graph: `design.md` §7, ADR 0010. Eval plan: `design.md` §14, ADR 0011.
 
 ## Later
 - Competitor discovery method: search-based, LLM-proposed, or both?
