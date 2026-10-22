@@ -19,6 +19,13 @@ class Tier(StrEnum):
     deep = "deep"
 
 
+# Who the executive brief / audience-implications section is written for
+# (ADR 0014). Research is shared and audience-agnostic; only synthesis's
+# interpretation of it is steered by this — never a second research pass.
+Audience = Literal["analyst", "investor", "leadership", "competitor", "sales_partnership"]
+DEFAULT_AUDIENCE: Audience = "analyst"
+
+
 class Freshness(BaseModel):
     """'Data as of' + staleness for one section, per field-checklist.md freshness rules."""
 
@@ -192,17 +199,65 @@ class ReportMeta(BaseModel):
     target_company_id: UUID
     competitor_ids: list[UUID] = Field(default_factory=list)
     tier: Tier
+    audience: Audience = DEFAULT_AUDIENCE
     generated_at: datetime
     data_as_of: date
+
+
+class ExecutiveFinding(BaseModel):
+    """One of the report's 3-5 most material, supported findings — the
+    "lead with this" section (ADR 0014), distinct from the full SWOT/
+    Five-Forces detail further down."""
+
+    statement: str
+    why_it_matters: str
+    claim_ids: list[UUID]
+
+
+class ComparisonCell(BaseModel):
+    """One company's answer for one comparison dimension. None is a clean
+    gap for that company/dimension, not an error."""
+
+    company_id: UUID
+    citation: Citation | None = None
+
+
+class ComparisonRow(BaseModel):
+    dimension: str  # machine key, matches a CompanySnapshot field name
+    label: str  # human label, e.g. "Revenue"
+    cells: list[ComparisonCell]
+
+
+class ComparisonTable(BaseModel):
+    """Deterministically assembled from already-synthesized CompanySnapshot
+    data (agents/synthesis.py) — no new research, no new LLM call; purely a
+    dimension x company reshape of facts already gathered once."""
+
+    rows: list[ComparisonRow] = Field(default_factory=list)
+
+
+class AudienceImplications(BaseModel):
+    """Why the findings above matter to the selected audience, and what's
+    still open — interpretation of the shared evidence, not new evidence
+    (ADR 0014: "research once, interpret per audience")."""
+
+    audience: Audience
+    relevance: str
+    assumptions: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
+    claim_ids: list[UUID] = Field(default_factory=list)
 
 
 class ReportJSON(BaseModel):
     meta: ReportMeta
     companies: list[CompanySnapshot] = Field(default_factory=list)
+    executive_brief: list[ExecutiveFinding] = Field(default_factory=list)
     five_forces: FiveForces = Field(default_factory=FiveForces)
     bmc: BusinessModelCanvas = Field(default_factory=BusinessModelCanvas)
     vrio: list[VRIOResource] = Field(default_factory=list)
     positioning: PositioningMap = Field(default_factory=PositioningMap)
     swot: SWOT = Field(default_factory=SWOT)
+    comparison: ComparisonTable = Field(default_factory=ComparisonTable)
     recommendations: list[Recommendation] = Field(default_factory=list)
+    audience_implications: AudienceImplications | None = None
     gaps: list[CoverageGap] = Field(default_factory=list)

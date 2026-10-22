@@ -134,10 +134,29 @@ class PositioningDraft(BaseModel):
     companies: list[PositionedCompanyDraft] = Field(default_factory=list)
 
 
+class ExecutiveFindingDraft(BaseModel):
+    statement: str
+    why_it_matters: str = Field(
+        description="One sentence: why this specific finding is material for the report's reader"
+    )
+    source_claim_indices: list[int] = Field(min_length=1)
+
+
+class AudienceImplicationsDraft(BaseModel):
+    """The model doesn't choose the audience — it's given one (ADR 0014)
+    and tailors `relevance`/assumptions/follow-ups to it."""
+
+    relevance: str = Field(description="Why these findings matter specifically for this audience")
+    assumptions: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
+    source_claim_indices: list[int] = Field(min_length=1)
+
+
 class FrameworkSynthesisResult(BaseModel):
     """The one strong-model call that produces every cross-company judgment
     (design.md's cost model assumes one synthesis call, not four — ADR 0008)."""
 
+    executive_brief: list[ExecutiveFindingDraft] = Field(default_factory=list)
     five_forces: list[ForceAssessmentDraft] = Field(default_factory=list)
     vrio: list[VRIOResourceDraft] = Field(default_factory=list)
     positioning: PositioningDraft | None = None
@@ -146,3 +165,4 @@ class FrameworkSynthesisResult(BaseModel):
     other_opportunities: list[SWOTItemDraft] = Field(default_factory=list)
     other_threats: list[SWOTItemDraft] = Field(default_factory=list)
     recommendations: list[RecommendationDraft] = Field(default_factory=list)
+    audience_implications: AudienceImplicationsDraft | None = None

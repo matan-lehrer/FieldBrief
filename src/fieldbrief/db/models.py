@@ -23,6 +23,12 @@ CompetitorOrigin = PgEnum("discovered", "user", name="competitor_origin")
 SourceType = PgEnum("filing", "official", "news", "blog", name="source_type")
 ReportTier = PgEnum("quick", "standard", "deep", name="report_tier")
 ReportStatus = PgEnum("queued", "running", "done", "partial", "failed", name="report_status")
+# Who the report's executive brief and audience-implications section are
+# written for (design.md §8/§6) — research is audience-agnostic; only
+# synthesis's interpretation of it is steered by this.
+ReportAudience = PgEnum(
+    "analyst", "investor", "leadership", "competitor", "sales_partnership", name="report_audience"
+)
 
 
 class Base(DeclarativeBase):
@@ -112,6 +118,9 @@ class Report(Base):
     )
     tier: Mapped[str] = mapped_column(ReportTier)
     status: Mapped[str] = mapped_column(ReportStatus, default="queued")
+    audience: Mapped[str] = mapped_column(
+        ReportAudience, default="analyst", server_default="analyst"
+    )
     report_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cost_usd: Mapped[float | None] = mapped_column(Numeric)
     idempotency_key: Mapped[str | None]

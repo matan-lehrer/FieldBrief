@@ -19,6 +19,7 @@ from fieldbrief.fetch.http import DEFAULT_USER_AGENT, Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
+from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
 app = typer.Typer(
     name="fieldbrief",
@@ -34,13 +35,22 @@ def analyze(
     competitors: int = typer.Option(
         -1, "--competitors", help="Number of competitors (default: the tier's own count)"
     ),
+    audience: Audience = typer.Option(
+        DEFAULT_AUDIENCE, "--audience", help="Who the executive brief is written for"
+    ),
 ) -> None:
     """Analyze a company and produce a cited strategy report."""
     competitor_count = competitors if competitors >= 0 else TIER_COMPETITOR_COUNT[tier]
-    asyncio.run(_analyze(company, tier, competitor_count, budget_usd_for(tier)))
+    asyncio.run(_analyze(company, tier, competitor_count, budget_usd_for(tier), audience))
 
 
-async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_usd: float) -> None:
+async def _analyze(
+    company_name: str,
+    tier: Tier,
+    competitor_count: int,
+    budget_usd: float,
+    audience: Audience = DEFAULT_AUDIENCE,
+) -> None:
     async with httpx.AsyncClient(headers={"User-Agent": DEFAULT_USER_AGENT}) as wikidata_client:
         candidates = await search_candidates(wikidata_client, company_name, limit=5)
         if not candidates:
@@ -70,7 +80,11 @@ async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_
                     industry=details.industry,
                 )
                 report = await create_report(
-                    session, user_id=user.id, target_company_id=company.id, tier=tier
+                    session,
+                    user_id=user.id,
+                    target_company_id=company.id,
+                    tier=tier,
+                    audience=audience,
                 )
                 await session.commit()
 
@@ -93,6 +107,7 @@ async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_
                     competitor_count=competitor_count,
                     edgar_client=edgar_client,
                     time_budget_seconds=time_budget_seconds_for(tier),
+                    audience=audience,
                 )
         finally:
             await fetcher.aclose()

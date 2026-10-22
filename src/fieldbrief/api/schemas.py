@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from fieldbrief.agents.field_checklist import Tier
+from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
 
 class ResolveRequest(BaseModel):
@@ -24,6 +25,7 @@ class CreateReportRequest(BaseModel):
     company_id: UUID
     tier: Tier = "standard"
     competitor_count: int | None = None  # None -> the tier's own default count
+    audience: Audience = DEFAULT_AUDIENCE
 
 
 class CreateReportResponse(BaseModel):
@@ -34,6 +36,7 @@ class ReportOut(BaseModel):
     id: UUID
     status: str
     tier: str
+    audience: str
     target_company_id: UUID
     report_json: dict[str, Any] | None
     cost_usd: float | None

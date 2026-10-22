@@ -95,15 +95,36 @@ def verification_prompt(statement: str, snippet: str) -> list[dict[str, str]]:
     ]
 
 
+# How to frame the executive brief / audience-implications section for each
+# selected audience (ADR 0014) — steers interpretation of the SAME shared
+# evidence, never a second research pass.
+AUDIENCE_FRAMING: dict[str, str] = {
+    "analyst": "a competitive analyst building a market picture — frame around what's "
+    "defensible, what's uncertain, and what a careful reader should verify further",
+    "investor": "an investor evaluating the company — frame around growth, risk, "
+    "defensibility of the business, and what would change an investment thesis",
+    "leadership": "the target company's own leadership — frame around strategic "
+    "priorities, competitive exposure, and what decisions this should inform",
+    "competitor": "a rival company's strategy team — frame around where the target is "
+    "vulnerable or strong, and what a competitive response might look like",
+    "sales_partnership": "someone evaluating a sales or partnership opportunity with the "
+    "target — frame around fit, leverage points, and open questions before engaging",
+}
+
+
 def framework_synthesis_prompt(
     companies: list[tuple[uuid.UUID, str, bool]],  # (company_id, name, is_target)
     claims: list[Claim],
+    audience: str = "analyst",
 ) -> list[dict[str, str]]:
-    """One call producing every cross-company judgment: Five Forces, VRIO
-    (target only — the claims list simply won't have resources.advantages
-    claims for competitors, per field_checklist's target_only fields),
-    positioning, the "other" SWOT sources (events/market_size/regulation/bmc/
-    financials/risks), and recommendations."""
+    """One call producing every cross-company judgment: an executive brief,
+    Five Forces, VRIO (target only — the claims list simply won't have
+    resources.advantages claims for competitors, per field_checklist's
+    target_only fields), positioning, the "other" SWOT sources (events/
+    market_size/regulation/bmc/financials/risks), recommendations, and
+    audience-tailored implications. One shared research pass feeds every
+    audience — `audience` only steers interpretation, never a second
+    research pass (ADR 0014)."""
     name_by_id = {cid: name for cid, name, _ in companies}
     numbered_companies = "\n".join(
         f"[{i}] {name} ({'target' if is_target else 'competitor'})"
@@ -114,8 +135,11 @@ def framework_synthesis_prompt(
         f"{f' / {c.value}' if c.value else ''}) {c.statement}"
         for i, c in enumerate(claims)
     )
+    audience_framing = AUDIENCE_FRAMING.get(audience, AUDIENCE_FRAMING["analyst"])
     system = (
         "You are a strategy analyst. Using ONLY the numbered claims below, produce: "
+        "an executive brief of the 3-5 most material, well-supported findings across "
+        "everything below, each with one sentence on why it matters; "
         "Five Forces ratings (one per force, only for forces with supporting claims — "
         "rating is always 'how much pressure this force puts on the company,' high is "
         "always bad. For threat_of_new_entrants specifically: rate it by how easy entry "
@@ -135,11 +159,15 @@ def framework_synthesis_prompt(
         "which is derived deterministically below, not authored directly; "
         "SWOT opportunities/threats from events/market_size/regulation/bmc claims only "
         "(never five_forces or vrio — those are derived separately); "
-        "and 3-7 recommendations. "
+        "3-7 recommendations; and audience_implications written for "
+        f"{audience_framing} — relevance (why these findings matter to this reader), "
+        "explicit assumptions you're making, and open follow-up questions. Omit "
+        "audience_implications entirely if the claims don't support it. "
         "Every item MUST cite at least one claim by its index — never invent an index, "
         "never cite a claim that doesn't support the point. If the claims don't support "
-        "a force, a resource, a company's position, a SWOT item, or a recommendation, "
-        "omit it; fewer honest findings beat invented ones."
+        "a force, a resource, a company's position, a SWOT item, a recommendation, an "
+        "executive-brief finding, or the audience implications, omit it; fewer honest "
+        "findings beat invented ones."
     )
     user = f"Companies:\n{numbered_companies}\n\nNumbered claims:\n{numbered_claims}"
     return [

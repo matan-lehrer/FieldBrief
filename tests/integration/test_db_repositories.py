@@ -212,3 +212,20 @@ async def test_create_and_save_report(session: AsyncSession) -> None:
     assert report.status == "done"
     assert report.report_json == {"meta": {"tier": "quick"}}
     assert report.cost_usd is not None
+
+
+@pytest.mark.asyncio
+async def test_create_report_defaults_audience_to_analyst(session: AsyncSession) -> None:
+    user = await get_or_create_cli_user(session)
+    domain = f"https://audience-test-{uuid.uuid4().hex[:8]}.example.com/"
+    company = await get_or_create_company(session, name="Audience Test Co", domain=domain)
+
+    default_report = await create_report(
+        session, user_id=user.id, target_company_id=company.id, tier="quick"
+    )
+    assert default_report.audience == "analyst"
+
+    investor_report = await create_report(
+        session, user_id=user.id, target_company_id=company.id, tier="quick", audience="investor"
+    )
+    assert investor_report.audience == "investor"

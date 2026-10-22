@@ -24,6 +24,7 @@ from fieldbrief.db.session import SessionFactory
 from fieldbrief.fetch.http import DEFAULT_USER_AGENT, Fetcher
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
+from fieldbrief.reports.schema import Audience
 from fieldbrief.worker.jobs import REPORT_JOBS_QUEUE, ReportJob
 from fieldbrief.worker.progress import RabbitProgressSink
 
@@ -80,6 +81,7 @@ async def handle_report_job(job: ReportJob) -> None:
                 progress=progress,
                 edgar_client=edgar_client,
                 time_budget_seconds=time_budget_seconds_for(tier),
+                audience=cast(Audience, report.audience),
             )
         except Exception as exc:
             logger.exception("report_job_failed", extra={"report_id": job.report_id})
