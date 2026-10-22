@@ -95,6 +95,23 @@ def render_report_html(
     )
 
 
+def render_pdf_html(report_json: dict[str, Any], company_name: str) -> str:
+    """A separate, deliberately short template for the PDF export — the web
+    report's full per-company/BMC/VRIO/positioning detail doesn't fit on 1-2
+    pages and isn't what a PDF export is for; this is the synthesis
+    highlights only (Five Forces, SWOT, top recommendations), no citations."""
+    template = _env.get_template("pdf_report.html")
+    meta = report_json.get("meta", {})
+    return template.render(
+        company_name=company_name,
+        tier=meta.get("tier", ""),
+        data_as_of=meta.get("data_as_of", ""),
+        forces=report_json.get("five_forces", {}).get("forces", []),
+        swot=report_json.get("swot", {}),
+        recommendations=report_json.get("recommendations", []),
+    )
+
+
 def render_home_html() -> str:
     """The stage 9 landing page — the browser-only entry point into
     /companies/resolve + /reports (previously API-only, curl required)."""

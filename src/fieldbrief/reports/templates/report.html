@@ -113,18 +113,23 @@
   <div class="card {{ 'target' if c.is_target else '' }}">
     <h3>{{ c.name }}{% if c.is_target %} (target){% endif %}</h3>
     <div class="field"><span class="field-label">Description</span>{{ citation(c.description) }}</div>
+    {% if c.hq or c.founded %}
     <div class="field"><span class="field-label">HQ / Founded</span> {{ c.hq or "—" }}{% if c.founded %}, {{ c.founded }}{% endif %}</div>
-    <div class="field"><span class="field-label">Employees</span>{{ citation(c.employees) }}</div>
-    <div class="field"><span class="field-label">Products</span>{{ citation(c.products) }}</div>
-    <div class="field"><span class="field-label">Customer segments</span>{{ citation(c.customer_segments) }}</div>
-    <div class="field"><span class="field-label">Revenue model</span>{{ citation(c.revenue_model) }}</div>
-    <div class="field"><span class="field-label">Revenue</span>{{ citation(c.revenue) }}</div>
-    {% if c.is_target %}
+    {% endif %}
+    {% if c.employees %}<div class="field"><span class="field-label">Employees</span>{{ citation(c.employees) }}</div>{% endif %}
+    {% if c.products %}<div class="field"><span class="field-label">Products</span>{{ citation(c.products) }}</div>{% endif %}
+    {% if c.customer_segments %}<div class="field"><span class="field-label">Customer segments</span>{{ citation(c.customer_segments) }}</div>{% endif %}
+    {% if c.revenue_model %}<div class="field"><span class="field-label">Revenue model</span>{{ citation(c.revenue_model) }}</div>{% endif %}
+    {% if c.revenue %}<div class="field"><span class="field-label">Revenue</span>{{ citation(c.revenue) }}</div>{% endif %}
+    {% if c.is_target and c.profitability %}
     <div class="field"><span class="field-label">Profitability</span>{{ citation(c.profitability) }}</div>
     {% endif %}
-    <div class="field"><span class="field-label">Funding / market cap</span>{{ citation(c.funding_or_cap) }}</div>
-    {% if c.is_target %}
+    {% if c.funding_or_cap %}<div class="field"><span class="field-label">Funding / market cap</span>{{ citation(c.funding_or_cap) }}</div>{% endif %}
+    {% if c.is_target and c.recent_events %}
     <div class="field"><span class="field-label">Recent events</span>{{ citation(c.recent_events) }}</div>
+    {% endif %}
+    {% if not (c.hq or c.founded or c.employees or c.products or c.customer_segments or c.revenue_model or c.revenue or c.profitability or c.funding_or_cap or c.recent_events) %}
+    <p class="gap">No further details found — see "Not found" below.</p>
     {% endif %}
   </div>
 {% endfor %}

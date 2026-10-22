@@ -50,6 +50,7 @@ from fieldbrief.reports.render import (
     collect_claim_ids,
     render_failed_html,
     render_home_html,
+    render_pdf_html,
     render_progress_html,
     render_report_html,
 )
@@ -335,10 +336,15 @@ async def view_report(
 @app.get("/reports/{report_id}/pdf", dependencies=[Depends(require_api_key)])
 async def report_pdf(report_id: UUID) -> Response:
     """design.md §9: "Reports are immutable, so a rendered PDF never goes
-    stale" — rendered on demand from the same immutable report_json/claims
-    every time, not cached, since there's nothing to invalidate."""
-    html = await _render_finished_report(report_id)
-    if html is None:
-        raise HTTPException(status_code=404, detail="report not found or not finished")
+    stale" — rendered on demand from the same immutable report_json every
+    time, not cached. A separate, deliberately short template from the web
+    report (render_pdf_html) — synthesis highlights only, built to fit 1-2
+    pages instead of the web view's full per-company/BMC/VRIO detail."""
+    async with SessionFactory() as session:
+        report = await get_report(session, report_id)
+        if report is None or report.status not in ("done", "partial") or report.report_json is None:
+            raise HTTPException(status_code=404, detail="report not found or not finished")
+        company = await session.get(Company, report.target_company_id)
+        html = render_pdf_html(report.report_json, company.name if company else "Report")
     pdf_bytes = await render_report_pdf(html)
     return Response(content=pdf_bytes, media_type="application/pdf")

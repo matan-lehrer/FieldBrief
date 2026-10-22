@@ -26,10 +26,13 @@ from fieldbrief.agents.nodes import (
     research_node,
     should_continue_researching,
 )
+from fieldbrief.agents.progress import NullProgressSink, ProgressSink
 from fieldbrief.agents.state import GraphState
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
+
+_NULL_PROGRESS = NullProgressSink()
 
 
 def build_company_research_graph(
@@ -41,6 +44,7 @@ def build_company_research_graph(
     http_client: httpx.AsyncClient,
     searxng_url: str,
     tier: Tier,
+    progress: ProgressSink = _NULL_PROGRESS,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
     graph = StateGraph(GraphState)
 
@@ -55,6 +59,7 @@ def build_company_research_graph(
             fetcher=fetcher,
             http_client=http_client,
             searxng_url=searxng_url,
+            progress=progress,
         ),
     )
     graph.add_node("gap_check", partial(gap_check_node, session=session))

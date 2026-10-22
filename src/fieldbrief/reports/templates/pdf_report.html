@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ company_name }} — FieldBrief brief</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #15171c;
+    margin: 0; line-height: 1.35; font-size: 12.5px; }
+  .ink-soft { color: #4b5160; }
+  .muted { color: #878c99; }
+  h1 { font-size: 24px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .meta { font-size: 11px; margin-bottom: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #4338ca;
+    margin: 16px 0 8px; }
+  .forces { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .force-pill { flex: 1; min-width: 100px; border-radius: 8px; padding: 8px 10px; }
+  .force-pill .name { font-size: 10.5px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; }
+  .force-pill .rating { font-size: 13px; font-weight: 700; text-transform: capitalize; }
+  .low { background: #e9f6ee; color: #157a45; }
+  .medium { background: #fbf1dd; color: #9a6b00; }
+  .high { background: #fcebea; color: #b3261e; }
+  .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+  .swot-box { border-radius: 8px; padding: 10px 12px; border-left: 3px solid; }
+  .swot-box.s { border-color: #157a45; } .swot-box.w { border-color: #b3261e; }
+  .swot-box.o { border-color: #2563a8; } .swot-box.t { border-color: #9a6b00; }
+  .swot-box .label { font-size: 10.5px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em;
+    margin-bottom: 4px; display: block; }
+  .swot-box ul { margin: 0; padding-left: 14px; }
+  .swot-box li { margin-bottom: 3px; }
+  .rec { border-radius: 8px; background: #f4f5f7; padding: 8px 12px; margin-bottom: 6px; }
+  .rec .priority { font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; }
+  .rec .statement { font-weight: 600; }
+  .rec .rationale { font-size: 11px; }
+</style>
+</head>
+<body>
+
+<h1>{{ company_name }}</h1>
+<div class="meta ink-soft">{{ tier | capitalize }} report · {{ data_as_of }}</div>
+
+{% if forces %}
+<h2>Five Forces</h2>
+<div class="forces">
+  {% for f in forces %}
+    <div class="force-pill {{ f.rating }}">
+      <div class="name">{{ f.force | replace("_", " ") }}</div>
+      <div class="rating">{{ f.rating }}</div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>SWOT</h2>
+<div class="swot-grid">
+  <div class="swot-box s"><span class="label">Strengths</span><ul>
+    {% for item in swot.strengths[:3] %}<li>{{ item.statement }}</li>{% endfor %}
+    {% if not swot.strengths %}<li class="muted">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-box w"><span class="label">Weaknesses</span><ul>
+    {% for item in swot.weaknesses[:3] %}<li>{{ item.statement }}</li>{% endfor %}
+    {% if not swot.weaknesses %}<li class="muted">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-box o"><span class="label">Opportunities</span><ul>
+    {% for item in swot.opportunities[:3] %}<li>{{ item.statement }}</li>{% endfor %}
+    {% if not swot.opportunities %}<li class="muted">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-box t"><span class="label">Threats</span><ul>
+    {% for item in swot.threats[:3] %}<li>{{ item.statement }}</li>{% endfor %}
+    {% if not swot.threats %}<li class="muted">none found</li>{% endif %}
+  </ul></div>
+</div>
+
+<h2>Top recommendations</h2>
+{% for rec in recommendations[:3] %}
+  <div class="rec">
+    <div class="priority">{{ rec.priority }} priority</div>
+    <div class="statement">{{ rec.statement }}</div>
+    <div class="rationale ink-soft">{{ rec.rationale }}</div>
+  </div>
+{% endfor %}
+{% if not recommendations %}<p class="muted">No recommendations yet.</p>{% endif %}
+
+</body>
+</html>
