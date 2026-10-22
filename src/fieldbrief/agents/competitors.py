@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from pydantic import BaseModel, Field
 
@@ -59,15 +61,20 @@ async def discover_competitors(
     report_id: str,
     limit: int,
 ) -> list[CompetitorCandidate]:
+    query_results = await asyncio.gather(
+        *(
+            search(
+                http_client,
+                searxng_url,
+                query_template.format(name=company_name),
+                limit=COMPETITOR_SEARCH_RESULTS_PER_QUERY,
+            )
+            for query_template in COMPETITOR_SEARCH_QUERIES
+        )
+    )
     seen_urls: set[str] = set()
     urls: list[str] = []
-    for query_template in COMPETITOR_SEARCH_QUERIES:
-        results = await search(
-            http_client,
-            searxng_url,
-            query_template.format(name=company_name),
-            limit=COMPETITOR_SEARCH_RESULTS_PER_QUERY,
-        )
+    for results in query_results:
         for result in results:
             if result.url not in seen_urls:
                 seen_urls.add(result.url)
@@ -75,14 +82,9 @@ async def discover_competitors(
     if not urls:
         return []
 
-    pages: list[str] = []
-    for url in urls:
-        html = await fetcher.fetch(url)
-        if html is None:
-            continue
-        cleaned = clean_html(html)
-        if cleaned is not None:
-            pages.append(cleaned)
+    htmls = await asyncio.gather(*(fetcher.fetch(url) for url in urls))
+    cleaned_pages = (clean_html(html) for html in htmls if html is not None)
+    pages = [page for page in cleaned_pages if page is not None]
     if not pages:
         return []
 

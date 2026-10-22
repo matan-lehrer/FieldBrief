@@ -215,10 +215,19 @@ async def run_report(
             "company_id": result["company_id"],
             "field": gap["field"],
             "attempts": gap["attempts"],
+            "reason": "not_found",
+        }
+        for result in results
+        for gap in result.get("exhausted_gaps", [])
+    ] + [
+        {
+            "company_id": result["company_id"],
+            "field": gap["field"],
+            "attempts": gap["attempts"],
             "reason": "budget_cutoff" if result.get("hit_budget_cutoff") else "not_found",
         }
         for result in results
-        for gap in [*result["gaps"], *result.get("exhausted_gaps", [])]
+        for gap in result["gaps"]
     ]
 
     await progress.emit(Stage.SYNTHESIZING, "Running frameworks and SWOT")
@@ -234,7 +243,8 @@ async def run_report(
     )
 
     has_budget_cutoff = any(g["reason"] == "budget_cutoff" for g in all_gaps)
-    status = "partial" if all_gaps and has_budget_cutoff else "done"
+    synthesis_budget_cutoff = report_json["meta"]["synthesis_budget_cutoff"]
+    status = "partial" if (all_gaps and has_budget_cutoff) or synthesis_budget_cutoff else "done"
 
     await save_report(
         session,
