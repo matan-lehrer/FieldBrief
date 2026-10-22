@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FieldBrief — competitive analysis in minutes</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .hero { padding: 72px 0 8px; text-align: center; }
+  .hero h1 { font-size: clamp(32px, 5vw, 46px); line-height: 1.12; margin: 0 0 14px; letter-spacing: -0.02em; }
+  .hero p { font-size: 17px; color: var(--ink-soft); max-width: 560px; margin: 0 auto; }
+  .form-card { padding: 28px; margin: 40px auto 0; max-width: 560px; }
+  .field-row label { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  input[type=text] {
+    width: 100%; font-family: inherit; font-size: 17px; padding: 13px 16px;
+    border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+    color: var(--ink); outline: none; transition: border-color .12s ease;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  .tiers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .tier-opt input { position: absolute; opacity: 0; }
+  .tier-opt label {
+    display: block; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px;
+    cursor: pointer; text-transform: none; font-weight: 400; transition: all .12s ease;
+  }
+  .tier-opt label .tier-name { font-weight: 700; font-size: 13.5px; color: var(--ink); }
+  .tier-opt label .tier-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .tier-opt input:checked + label { border-color: var(--accent); background: var(--accent-soft); }
+  .advanced { margin-top: 14px; }
+  .advanced summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+  .advanced[open] summary { margin-bottom: 10px; }
+  input[type=text].key-input { font-size: 14px; padding: 10px 14px; }
+  .submit-row { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+  .error-msg { color: var(--bad); font-size: 13.5px; margin-top: 12px; display: none; }
+  .how { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 64px; }
+  .how-step { text-align: center; }
+  .how-step .how-icon {
+    width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 10px; background: var(--accent-soft);
+    color: var(--accent); display: flex; align-items: center; justify-content: center;
+  }
+  .how-step .how-icon svg { width: 20px; height: 20px; }
+  .how-step h4 { font-size: 13.5px; margin: 0 0 4px; }
+  .how-step p { font-size: 12.5px; color: var(--muted); margin: 0; }
+  footer { text-align: center; padding: 40px 0; color: var(--muted); font-size: 12.5px; }
+  @media (max-width: 640px) { .tiers, .how { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="wordmark">Field<span class="dot">Brief</span></div>
+  <div class="topbar-right">Framework-based competitive analysis</div>
+</div>
+
+<div class="wrap">
+  <div class="hero fade-in">
+    <h1>Competitive intelligence,<br>built on real strategy frameworks.</h1>
+    <p>Enter a company. FieldBrief researches it and its real competitors, then applies
+      Five Forces, VRIO, and Business Model Canvas to produce a cited SWOT and recommendations.</p>
+  </div>
+
+  <form class="card form-card fade-in" id="analyze-form" autocomplete="off">
+    <div class="field-row">
+      <label for="company">Company</label>
+      <input type="text" id="company" name="company" placeholder="e.g. Wix, Notion, Figma" required>
+    </div>
+
+    <div class="field-row" style="margin-top:18px;">
+      <label>Depth</label>
+      <div class="tiers">
+        <div class="tier-opt">
+          <input type="radio" name="tier" id="tier-quick" value="quick">
+          <label for="tier-quick"><div class="tier-name">Quick</div><div class="tier-desc">Target only</div></label>
+        </div>
+        <div class="tier-opt">
+          <input type="radio" name="tier" id="tier-standard" value="standard" checked>
+          <label for="tier-standard"><div class="tier-name">Standard</div><div class="tier-desc">+4 competitors</div></label>
+        </div>
+        <div class="tier-opt">
+          <input type="radio" name="tier" id="tier-deep" value="deep">
+          <label for="tier-deep"><div class="tier-name">Deep</div><div class="tier-desc">+6 competitors</div></label>
+        </div>
+      </div>
+    </div>
+
+    <details class="advanced">
+      <summary>API key</summary>
+      <input type="text" id="api-key" class="key-input" placeholder="change-me">
+    </details>
+
+    <div class="submit-row">
+      <button type="submit" class="btn btn-primary" id="submit-btn">
+        <span id="submit-label">Analyze</span>
+      </button>
+      <span id="submit-status" style="font-size:13px;color:var(--muted);"></span>
+    </div>
+    <p class="error-msg" id="error-msg"></p>
+  </form>
+
+  <div class="how">
+    <div class="how-step fade-in">
+      <div class="how-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <h4>Resolve &amp; discover</h4>
+      <p>Disambiguate the company, find its real competitors</p>
+    </div>
+    <div class="how-step fade-in">
+      <div class="how-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 2v6l-5 10a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L15 8V2"/><path d="M9 2h6"/></svg></div>
+      <h4>Research</h4>
+      <p>Fetch and verify claims from the web, SEC, Wikidata</p>
+    </div>
+    <div class="how-step fade-in">
+      <div class="how-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></div>
+      <h4>Apply frameworks</h4>
+      <p>Five Forces, VRIO, BMC, positioning — scored from evidence</p>
+    </div>
+    <div class="how-step fade-in">
+      <div class="how-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></div>
+      <h4>Cited report</h4>
+      <p>SWOT and recommendations, every claim linked to a source</p>
+    </div>
+  </div>
+</div>
+
+<footer>Every claim cites a source. Unknown is an acceptable answer; invented is not.</footer>
+
+<script>
+(function () {
+  const form = document.getElementById("analyze-form");
+  const keyInput = document.getElementById("api-key");
+  const errorMsg = document.getElementById("error-msg");
+  const submitBtn = document.getElementById("submit-btn");
+  const submitLabel = document.getElementById("submit-label");
+  const submitStatus = document.getElementById("submit-status");
+
+  try {
+    const savedKey = localStorage.getItem("fieldbrief_api_key");
+    if (savedKey) keyInput.value = savedKey;
+  } catch (e) { /* private browsing / storage blocked — fine, just won't persist */ }
+
+  function setLoading(loading, status) {
+    submitBtn.disabled = loading;
+    submitLabel.textContent = loading ? "Starting…" : "Analyze";
+    submitStatus.textContent = status || "";
+  }
+
+  async function errMsg(resp, fallback) {
+    try {
+      const body = await resp.json();
+      return body.detail || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    errorMsg.style.display = "none";
+    const company = document.getElementById("company").value.trim();
+    const tier = form.querySelector("input[name=tier]:checked").value;
+    const apiKey = keyInput.value.trim() || "change-me";
+    if (!company) return;
+
+    try { localStorage.setItem("fieldbrief_api_key", apiKey); } catch (e) { /* ignore */ }
+
+    setLoading(true, "Resolving company…");
+    try {
+      const resolveResp = await fetch("/companies/resolve", {
+        method: "POST",
+        headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: company }),
+      });
+      if (!resolveResp.ok) throw new Error(await errMsg(resolveResp, "Couldn't find that company"));
+      const resolved = await resolveResp.json();
+
+      setLoading(true, "Starting report…");
+      const reportResp = await fetch("/reports", {
+        method: "POST",
+        headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: resolved.id, tier: tier }),
+      });
+      if (!reportResp.ok) throw new Error(await errMsg(reportResp, "Couldn't start the report"));
+      const { report_id } = await reportResp.json();
+
+      location.href = "/reports/" + report_id + "/view?api_key=" + encodeURIComponent(apiKey);
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.style.display = "block";
+      setLoading(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>

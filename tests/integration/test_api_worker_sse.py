@@ -252,8 +252,9 @@ async def test_view_shows_progress_shell_for_an_unfinished_report() -> None:
             ) as client:
                 resp = await client.get(f"/reports/{report.id}/view")
                 assert resp.status_code == 200
-                assert "Generating your report" in resp.text
-                assert f"/reports/{report.id}/events" in resp.text
+                assert "Analyzing Pending Co" in resp.text
+                assert str(report.id) in resp.text
+                assert "/events" in resp.text
     finally:
         async with SessionFactory() as cleanup_session:
             if created_report_id is not None:
@@ -264,3 +265,69 @@ async def test_view_shows_progress_shell_for_an_unfinished_report() -> None:
                 )
             await cleanup_session.commit()
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_view_shows_failed_page_not_an_infinite_shell_loop() -> None:
+    """Stage 9 bug fix: a failed report used to fall through to the same
+    progress shell forever (its location.reload() on a terminal stage has
+    nowhere finished to land for status="failed", so it just re-opens the
+    shell, gets "failed" again via the DB catch-up fallback, and reloads
+    again) — a real user hit this live. /view must now render a stable
+    terminal page instead."""
+    company_domain = f"https://failed-{uuid.uuid4().hex[:8]}.example.com/"
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company = await get_or_create_company(session, name="Failed Co", domain=company_domain)
+            created_company_id = company.id
+            report = await create_report(
+                session,
+                user_id=user.id,
+                target_company_id=company.id,
+                tier="quick",
+                status="failed",
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            transport = httpx.ASGITransport(app=fastapi_app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://test",
+                headers={"X-API-Key": settings.api_key},
+            ) as client:
+                resp = await client.get(f"/reports/{report.id}/view")
+                assert resp.status_code == 200
+                assert "failed to generate" in resp.text
+                assert str(report.id) in resp.text
+                # not the progress shell — no SSE connection to loop on
+                assert "EventSource" not in resp.text
+                assert "/refresh" in resp.text
+    finally:
+        async with SessionFactory() as cleanup_session:
+            if created_report_id is not None:
+                await cleanup_session.execute(delete(Report).where(Report.id == created_report_id))
+            if created_company_id is not None:
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
+            await cleanup_session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_home_page_renders_the_analyze_form() -> None:
+    """Stage 9: the browser-only entry point. No DB/auth needed — it's a
+    static form; the API calls it makes still go through require_api_key."""
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        assert "FieldBrief" in resp.text
+        assert 'id="analyze-form"' in resp.text
+        assert "/companies/resolve" in resp.text
+        assert "/reports" in resp.text

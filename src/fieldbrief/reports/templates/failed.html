@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report failed — FieldBrief</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .center-card { padding: 40px 36px; margin: 64px auto 0; max-width: 560px; text-align: center; }
+  .fail-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--bad-soft); color: var(--bad);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
+  .fail-icon svg { width: 24px; height: 24px; }
+  .center-card h1 { font-size: 20px; margin: 0 0 8px; }
+  .center-card p { color: var(--muted); font-size: 14px; }
+  .report-id { margin-top: 18px; font-size: 12.5px; }
+  .actions { margin-top: 24px; display: flex; gap: 10px; justify-content: center; }
+  .error-msg { color: var(--bad); font-size: 13px; margin-top: 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="wordmark">Field<span class="dot">Brief</span></div>
+</div>
+
+<div class="card center-card fade-in">
+  <div class="fail-icon">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L2.5 17.1a1.9 1.9 0 0 0 1.6 2.9h15.8a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+  </div>
+  <h1>This report failed to generate</h1>
+  <p>Something went wrong partway through the run — check the worker logs for the cause.</p>
+  <div class="report-id"><code id="report-id">{{ report_id }}</code></div>
+  <div class="actions">
+    <button class="btn btn-primary" id="retry-btn">Try again</button>
+    <a class="btn btn-ghost" href="/">Start over</a>
+  </div>
+  <p class="error-msg" id="error-msg"></p>
+</div>
+
+<script>
+(function () {
+  const reportId = {{ report_id | tojson }};
+  const apiKey = {{ api_key | tojson }};
+  const retryBtn = document.getElementById("retry-btn");
+  const errorMsg = document.getElementById("error-msg");
+
+  retryBtn.addEventListener("click", async function () {
+    retryBtn.disabled = true;
+    retryBtn.textContent = "Starting…";
+    try {
+      const resp = await fetch("/reports/" + reportId + "/refresh", {
+        method: "POST",
+        headers: { "X-API-Key": apiKey },
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(function () { return {}; });
+        throw new Error(body.detail || "Couldn't start a retry");
+      }
+      const { report_id } = await resp.json();
+      location.href = "/reports/" + report_id + "/view?api_key=" + encodeURIComponent(apiKey);
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.style.display = "block";
+      retryBtn.disabled = false;
+      retryBtn.textContent = "Try again";
+    }
+  });
+})();
+</script>
+</body>
+</html>
