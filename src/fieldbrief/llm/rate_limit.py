@@ -1,18 +1,8 @@
-"""Per-provider rate limiting for LLM calls.
-
-design.md "LLM gateway" step 4: "Rate limit: token bucket per provider
-(in-process with one worker, Postgres-backed with several); wait, don't fail."
-MVP runs one worker, so in-process is the whole requirement — a shared,
-Postgres-backed bucket is scale-path work (design.md §10), not MVP.
-"""
-
 import asyncio
 import time
 
 
 class TokenBucket:
-    """Classic token bucket: `rate` tokens/second, up to `capacity` burst."""
-
     def __init__(self, rate_per_s: float, capacity: float) -> None:
         self._rate = rate_per_s
         self._capacity = capacity
@@ -35,8 +25,6 @@ class TokenBucket:
 
 
 class ProviderRateLimiter:
-    """One TokenBucket per provider name (e.g. "gemini"), created on first use."""
-
     def __init__(self, rate_per_s: float = 10.0, capacity: float = 10.0) -> None:
         self._rate_per_s = rate_per_s
         self._capacity = capacity

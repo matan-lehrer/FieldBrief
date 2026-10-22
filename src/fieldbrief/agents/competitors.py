@@ -1,5 +1,3 @@
-"""Competitor discovery (ADR 0012): search-grounded, not LLM-proposed."""
-
 import httpx
 from pydantic import BaseModel, Field
 
@@ -9,6 +7,9 @@ from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
+
+COMPETITOR_SEARCH_QUERIES = ["{name} competitors", "{name} alternatives", "{name} vs"]
+COMPETITOR_SEARCH_RESULTS_PER_QUERY = 4
 
 
 class CompetitorCandidate(BaseModel):
@@ -20,12 +21,13 @@ class CompetitorDiscoveryResult(BaseModel):
     competitors: list[CompetitorCandidate] = Field(default_factory=list)
 
 
-def _discovery_prompt(company_name: str, page_text: str) -> list[dict[str, str]]:
+def _discovery_prompt(company_name: str, pages_text: str) -> list[dict[str, str]]:
     system = (
-        "You read a web page and list companies it names as competitors or "
-        "alternatives to the given company. Only list a company if the page "
-        "actually names it as a competitor/alternative — never add one from "
-        "general knowledge. If the page names none, return an empty list."
+        "You read excerpts from several web pages and list companies they "
+        "name as competitors or alternatives to the given company. Only "
+        "list a company if some excerpt actually names it as a "
+        "competitor/alternative — never add one from general knowledge. If "
+        "nothing names any, return an empty list."
     )
     keywords = {
         *company_name.split(),
@@ -37,9 +39,9 @@ def _discovery_prompt(company_name: str, page_text: str) -> list[dict[str, str]]
         "vs",
     }
     bounded_text = select_relevant_passages(
-        page_text, keywords, max_chars=COMPETITOR_DISCOVERY_MAX_CHARS
+        pages_text, keywords, max_chars=COMPETITOR_DISCOVERY_MAX_CHARS
     )
-    user = f"Company: {company_name}\n\nPage text:\n{bounded_text}"
+    user = f"Company: {company_name}\n\nPage excerpts:\n{bounded_text}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -57,29 +59,42 @@ async def discover_competitors(
     report_id: str,
     limit: int,
 ) -> list[CompetitorCandidate]:
-    """Search-grounded only (ADR 0012) — a candidate with no page naming it as
-    a competitor doesn't make the list, even if the model "knows" of one."""
-    results = await search(http_client, searxng_url, f"{company_name} competitors", limit=3)
-    if not results:
+    seen_urls: set[str] = set()
+    urls: list[str] = []
+    for query_template in COMPETITOR_SEARCH_QUERIES:
+        results = await search(
+            http_client,
+            searxng_url,
+            query_template.format(name=company_name),
+            limit=COMPETITOR_SEARCH_RESULTS_PER_QUERY,
+        )
+        for result in results:
+            if result.url not in seen_urls:
+                seen_urls.add(result.url)
+                urls.append(result.url)
+    if not urls:
         return []
 
-    html = await fetcher.fetch(results[0].url)
-    if html is None:
-        return []
-    cleaned = clean_html(html)
-    if cleaned is None:
+    pages: list[str] = []
+    for url in urls:
+        html = await fetcher.fetch(url)
+        if html is None:
+            continue
+        cleaned = clean_html(html)
+        if cleaned is not None:
+            pages.append(cleaned)
+    if not pages:
         return []
 
     discovery = await gateway.call(
         Task.EXTRACT,
-        _discovery_prompt(company_name, cleaned),
+        _discovery_prompt(company_name, "\n\n---\n\n".join(pages)),
         CompetitorDiscoveryResult,
         budget,
         report_id=report_id,
         stage="discover_competitors",
     )
     ranked = sorted(discovery.competitors, key=lambda c: c.relevance, reverse=True)
-    # Never the company itself, never duplicates by name.
     seen = {company_name.strip().lower()}
     unique: list[CompetitorCandidate] = []
     for candidate in ranked:

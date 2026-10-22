@@ -1,8 +1,3 @@
-"""SQLAlchemy models for the 8 tables in docs/design.md §4.
-
-Source of truth is docs/design.md — update both together.
-"""
-
 import uuid
 from datetime import datetime
 from typing import Any
@@ -23,9 +18,6 @@ CompetitorOrigin = PgEnum("discovered", "user", name="competitor_origin")
 SourceType = PgEnum("filing", "official", "news", "blog", name="source_type")
 ReportTier = PgEnum("quick", "standard", "deep", name="report_tier")
 ReportStatus = PgEnum("queued", "running", "done", "partial", "failed", name="report_status")
-# Who the report's executive brief and audience-implications section are
-# written for (design.md §8/§6) — research is audience-agnostic; only
-# synthesis's interpretation of it is steered by this.
 ReportAudience = PgEnum(
     "analyst", "investor", "leadership", "competitor", "sales_partnership", name="report_audience"
 )
@@ -99,7 +91,6 @@ class Claim(Base):
     verified: Mapped[bool] = mapped_column(default=False)
     extracted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    # The cache lookup, hottest query (design.md §4): fresh claims for (company, field).
     __table_args__ = (
         Index("ix_claims_company_field_extracted", "company_id", "field", "extracted_at"),
     )
@@ -130,9 +121,6 @@ class Report(Base):
     __table_args__ = (
         Index("ix_reports_user_created", "user_id", "created_at"),
         Index("ix_reports_target_created", "target_company_id", "created_at"),
-        # Scoped per-user (design.md §8: "POST /reports accepts an
-        # Idempotency-Key header") — two users may coincidentally reuse the
-        # same key string without colliding.
         Index("ux_reports_user_idempotency_key", "user_id", "idempotency_key", unique=True),
     )
 

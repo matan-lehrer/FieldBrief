@@ -1,5 +1,3 @@
-"""The LLM gateway — the only path to any LLM call in the codebase."""
-
 import hashlib
 import json
 import logging
@@ -22,8 +20,6 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class Task(StrEnum):
-    """Cheap model for extraction/verification, strong model for synthesis."""
-
     EXTRACT = "extract"
     VERIFY = "verify"
     SYNTHESIZE = "synthesize"
@@ -78,7 +74,6 @@ class LLMGateway:
             num_retries=EXTRACT_NUM_RETRIES,
         )
         raw = response.choices[0].message.content
-        # The call cost money whether or not the JSON below is valid.
         cost_usd = litellm.completion_cost(completion_response=response)
         budget.settle(cost_usd - estimated_cost)
 
@@ -121,8 +116,6 @@ class LLMGateway:
         *,
         budget: Budget,
     ) -> T:
-        """One repair retry; if this also fails, the error propagates and
-        the caller treats it as a gap."""
         repair_messages = [
             *messages,
             {"role": "assistant", "content": bad_output},
@@ -165,8 +158,6 @@ _COMPLETION_TO_PROMPT_RATIO_ESTIMATE = 3
 
 
 def _estimate_cost(model: str, messages: list[dict[str, str]]) -> float:
-    """Pre-call estimate for the budget reservation; actual cost is settled
-    from real usage after the call."""
     char_count = sum(len(m.get("content", "")) for m in messages)
     estimated_prompt_tokens = max(1, char_count // _CHARS_PER_TOKEN_ESTIMATE)
     pricing = litellm.model_cost.get(model, {})

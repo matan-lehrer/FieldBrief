@@ -1,9 +1,3 @@
-"""Runs one full report: discover competitors, research every company in
-parallel (ADR 0010's outer fan-out — see agents/graph.py's module docstring
-for why that's plain asyncio.gather, not a second LangGraph layer), then the
-cross-company synthesis join. The one function the CLI (and, later, the
-worker) calls."""
-
 import asyncio
 import time
 import uuid
@@ -45,7 +39,9 @@ async def _resolve_competitor(
     candidates = await search_candidates(wikidata_client, name, limit=WIKIDATA_CANDIDATE_LIMIT)
     if not candidates:
         return None
-    best = await pick_company_like(wikidata_client, candidates) or candidates[0]
+    best = await pick_company_like(wikidata_client, candidates)
+    if best is None:
+        return None
     details = await get_company_details(wikidata_client, best.qid)
     return await get_or_create_company(
         session,
@@ -73,10 +69,6 @@ async def _research_company(
     edgar_client: httpx.AsyncClient | None = None,
     deadline: float | None = None,
 ) -> dict[str, Any]:
-    """Its own session, not the caller's — this runs concurrently with every
-    other company's research and AsyncSession isn't safe for concurrent use.
-    Commits at the end: a company's claims are shared, durable research
-    (ADR 0004) independent of whether the report itself succeeds."""
     async with SessionFactory() as session:
         graph = build_company_research_graph(
             session=session,
@@ -107,9 +99,6 @@ async def _research_company(
         try:
             result = await graph.ainvoke(initial)
         except BudgetExceededError:
-            # Budget ran out mid-research. Build this company's snapshot
-            # from whatever claims made it in rather than crashing the
-            # whole report (partial, never failed).
             await progress.emit(
                 Stage.RESEARCHING, f"{company.name}: budget exhausted, using research so far"
             )
@@ -168,8 +157,6 @@ async def run_report(
                 limit=competitor_count,
             )
         except BudgetExceededError:
-            # Not fatal — the report still runs target-only, which is a far
-            # better outcome than crashing before research even starts.
             candidates = []
             await progress.emit(
                 Stage.DISCOVERING, "Budget exhausted before competitor discovery — target only"
@@ -228,9 +215,6 @@ async def run_report(
             "company_id": result["company_id"],
             "field": gap["field"],
             "attempts": gap["attempts"],
-            # Only an actual $ or time cutoff (hit_budget_cutoff) counts as
-            # "budget_cutoff"; a gap that ran its full attempts within
-            # budget is an honest "not_found".
             "reason": "budget_cutoff" if result.get("hit_budget_cutoff") else "not_found",
         }
         for result in results

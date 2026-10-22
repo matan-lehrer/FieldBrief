@@ -1,8 +1,3 @@
-"""Confidence scoring: derived at report-build time, never stored.
-
-confidence = f(source_reliability, relevance, verified, corroboration).
-"""
-
 import uuid
 from typing import Literal
 
@@ -18,18 +13,12 @@ SOURCE_RELIABILITY = {
     "blog": 0.5,
 }
 
-# Each additional independent source corroborating a field nudges
-# confidence up, capped so it never exceeds 1.0.
 CORROBORATION_BONUS_PER_SOURCE = 0.05
 
-# Numeric values for the same field disagreeing by more than this
-# (relative to the smaller one) are conflicting, not corroborating.
 CONFLICT_RELATIVE_TOLERANCE = 0.15
 
 
 def _numeric_value(claim: Claim) -> float | None:
-    """Best-effort first numeric leaf in claim.value, used only to detect
-    disagreement between sources — never to pick a display value."""
     for v in claim.value.values():
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             return float(v)
@@ -47,8 +36,6 @@ def _claims_conflict(claims: list[Claim]) -> bool:
 
 
 def _evidence_status(*, verified: bool, corroboration: int, conflicting: bool) -> EvidenceStatus:
-    """A status a reader can act on, instead of a score that reads like a
-    probability of being true."""
     if conflicting:
         return "conflicting"
     if not verified:
@@ -57,9 +44,6 @@ def _evidence_status(*, verified: bool, corroboration: int, conflicting: bool) -
 
 
 def compute_citation(claims: list[Claim], sources: dict[uuid.UUID, Source]) -> Citation:
-    """One field's claims -> a Citation with a derived confidence score.
-    `sources` maps claim.source_id -> Source; the caller already has these
-    loaded."""
     if not claims:
         raise ValueError("compute_citation requires at least one claim")
 

@@ -5,9 +5,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     llm_api_key: str = ""
-    # 2.5 Flash/Pro (ADR 0008's original pick) were retired for new API keys by
-    # Oct 2026; these are their current replacements (verified live against
-    # the Gemini API, see ADR 0008's addendum).
     llm_model_cheap: str = "gemini/gemini-3.8-flash"
     llm_model_strong: str = "gemini/gemini-3.1-pro-preview"
 

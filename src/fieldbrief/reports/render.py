@@ -1,11 +1,3 @@
-"""Renders report_json into HTML (Jinja2) — the Report UI (stage 7).
-
-report_json only stores claim_ids (design.md §4/§5: claims are the source of
-truth, report_json just references them) — rendering needs the actual claim
-text + source URL, so this resolves every claim_id referenced anywhere in the
-report with one batched query before handing off to the template.
-"""
-
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,9 +13,6 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 _env = Environment(
     loader=FileSystemLoader(TEMPLATES_DIR),
     autoescape=select_autoescape(["html"]),
-    # Reports stored before a report_json field existed (e.g. executive_brief,
-    # comparison, audience_implications) genuinely lack that key — chained
-    # access like report.comparison.rows must stay falsy, not raise.
     undefined=ChainableUndefined,
 )
 
@@ -74,8 +63,6 @@ def collect_claim_ids(report_json: dict[str, Any]) -> set[str]:
 
 
 def _publisher_label(source: Source) -> str:
-    """The real publisher, for the source hover/footnote — a title if the
-    page had one, else its domain. Never the claim's own generated text."""
     if source.title:
         return source.title
     return urlparse(source.url).netloc.removeprefix("www.")
@@ -111,10 +98,6 @@ async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[s
 def assign_source_numbers(
     report_json: dict[str, Any], claims: dict[str, dict[str, Any]]
 ) -> dict[str, int]:
-    """claim_id -> footnote number, assigned by first appearance in the same
-    order the PDF renders sections (print has no hover, so a source becomes
-    a numbered reference instead) — one number per distinct source URL, not
-    per claim, so several claims from the same page share a number."""
     claim_number: dict[str, int] = {}
     url_number: dict[str, int] = {}
 
@@ -195,9 +178,6 @@ def render_report_html(
 def render_pdf_html(
     report_json: dict[str, Any], claims: dict[str, dict[str, Any]], company_name: str
 ) -> str:
-    """Same report_json and resolved claims the web view uses — content
-    parity with /view, just a print-appropriate layout and numbered source
-    references instead of hover (print has no hover)."""
     template = _env.get_template("pdf_report.html")
     source_numbers = assign_source_numbers(report_json, claims)
     return template.render(
@@ -210,8 +190,6 @@ def render_pdf_html(
 
 
 def render_home_html() -> str:
-    """The stage 9 landing page — the browser-only entry point into
-    /companies/resolve + /reports (previously API-only, curl required)."""
     return _env.get_template("home.html").render()
 
 
@@ -227,6 +205,4 @@ def render_failed_html(report_id: uuid.UUID, api_key: str | None) -> str:
 
 
 def render_history_html(rows: list[dict[str, Any]], api_key: str | None) -> str:
-    """Rows are pre-assembled by the caller (api/app.py) — this file has no
-    DB access, same split as every other render_* function here."""
     return _env.get_template("history.html").render(rows=rows, api_key=api_key or "")

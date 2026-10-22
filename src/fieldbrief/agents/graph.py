@@ -1,16 +1,3 @@
-"""Builds the per-company research subgraph (ADR 0010's inner fan-out level):
-plan -> research -> gap_check -> [loop back to research, or advance] ->
-analyze -> END.
-
-One compiled graph, reused for every company in a report (target and each
-competitor) via agents/orchestrator.py's asyncio.gather — the outer,
-per-company fan-out and the cross-company synthesis/deliver join are plain
-async code, not a second LangGraph layer (no conditional looping happens at
-that level, so a state machine adds nothing there). No checkpointer: stage
-3/4 runs synchronously from the CLI; Postgres checkpointing for worker
-resumability is stage 6.
-"""
-
 from functools import partial
 
 import httpx
@@ -65,7 +52,7 @@ def build_company_research_graph(
             progress=progress,
         ),
     )
-    graph.add_node("gap_check", partial(gap_check_node, session=session))
+    graph.add_node("gap_check", partial(gap_check_node, session=session, tier=tier))
     graph.add_node("analyze", partial(analyze_node, session=session))
 
     graph.add_edge(START, "plan")

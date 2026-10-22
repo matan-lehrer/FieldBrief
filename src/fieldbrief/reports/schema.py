@@ -1,10 +1,3 @@
-"""Pydantic models for `report_json` (REPORTS.report_json, design.md §5).
-
-This is the contract between synthesis (agents/) and everything that reads a
-report (API, CLI, UI, PDF). Keep this in lockstep with design.md §5-7 and
-ADR 0007/0009/0010 — update both together.
-"""
-
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal
@@ -19,44 +12,28 @@ class Tier(StrEnum):
     deep = "deep"
 
 
-# Who the executive brief / audience-implications section is written for
-# (ADR 0014). Research is shared and audience-agnostic; only synthesis's
-# interpretation of it is steered by this — never a second research pass.
 Audience = Literal["analyst", "investor", "leadership", "competitor", "sales_partnership"]
 DEFAULT_AUDIENCE: Audience = "analyst"
 
 
 class Freshness(BaseModel):
-    """'Data as of' + staleness for one section, per field-checklist.md freshness rules."""
-
     as_of: date
     stale: bool
 
 
 class Confidence(BaseModel):
-    """Derived at build time (design.md §3), frozen into the report — never recomputed after."""
-
     score: float = Field(ge=0, le=1)
-    corroboration: int  # independent sources agreeing
+    corroboration: int
     verified: bool
-    # A reader-facing evidence status derived from the same inputs as
-    # `score` — meant to replace showing `score` as a bare percentage
-    # (easy to misread as "% likely true"). Default exists only so a
-    # report_json saved before this field existed still renders.
     status: Literal["strong", "supported", "unverified", "conflicting"] = "supported"
 
 
 class Citation(BaseModel):
-    """One field's answer for one company: the claims behind it plus their rolled-up confidence."""
-
     claim_ids: list[UUID]
     confidence: Confidence
 
 
 class CompanySnapshot(BaseModel):
-    """profile.* / offering.* / financials.* for one company. recent_events is
-    target-only (field-checklist.md)."""
-
     company_id: UUID
     name: str
     is_target: bool
@@ -75,9 +52,6 @@ class CompanySnapshot(BaseModel):
 
 
 class ForceAssessment(BaseModel):
-    """One Five Forces dimension. claim_ids come from claims tagged
-    value.force == force (ADR 0007)."""
-
     force: Literal[
         "buyer_power", "supplier_power", "substitutes", "threat_of_new_entrants", "rivalry"
     ]
@@ -113,9 +87,6 @@ class BusinessModelCanvas(BaseModel):
 
 
 class VRIOResource(BaseModel):
-    """One resource/advantage. claim_ids come from claims tagged
-    value.resource == resource (ADR 0007)."""
-
     resource: str
     valuable: bool
     rare: bool
@@ -186,9 +157,6 @@ class Recommendation(BaseModel):
 
 
 class CoverageGap(BaseModel):
-    """An explicit 'not found' or budget cutoff (ADR 0010), per field-checklist.md
-    rule 1 — never a silently missing section."""
-
     company_id: UUID
     field: str
     attempts: int
@@ -205,42 +173,27 @@ class ReportMeta(BaseModel):
 
 
 class ExecutiveFinding(BaseModel):
-    """One of the report's 3-5 most material, supported findings — the
-    "lead with this" section (ADR 0014), distinct from the full SWOT/
-    Five-Forces detail further down."""
-
     statement: str
     why_it_matters: str
     claim_ids: list[UUID]
 
 
 class ComparisonCell(BaseModel):
-    """One company's answer for one comparison dimension. None is a clean
-    gap for that company/dimension, not an error."""
-
     company_id: UUID
     citation: Citation | None = None
 
 
 class ComparisonRow(BaseModel):
-    dimension: str  # machine key, matches a CompanySnapshot field name
-    label: str  # human label, e.g. "Revenue"
+    dimension: str
+    label: str
     cells: list[ComparisonCell]
 
 
 class ComparisonTable(BaseModel):
-    """Deterministically assembled from already-synthesized CompanySnapshot
-    data (agents/synthesis.py) — no new research, no new LLM call; purely a
-    dimension x company reshape of facts already gathered once."""
-
     rows: list[ComparisonRow] = Field(default_factory=list)
 
 
 class AudienceImplications(BaseModel):
-    """Why the findings above matter to the selected audience, and what's
-    still open — interpretation of the shared evidence, not new evidence
-    (ADR 0014: "research once, interpret per audience")."""
-
     audience: Audience
     relevance: str
     assumptions: list[str] = Field(default_factory=list)

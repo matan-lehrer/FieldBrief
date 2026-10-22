@@ -1417,11 +1417,6 @@ def test_should_continue_researching_stops_at_the_time_deadline() -> None:
 
 @pytest.mark.asyncio
 async def test_gap_check_node_stops_retrying_a_field_past_its_attempt_cap() -> None:
-    """MAX_ATTEMPTS_PER_FIELD was defined but never enforced — only the
-    tier's round cap stopped retries, which for deep tier (3 rounds) could
-    retry a single field past field-checklist.md rule 1's 2-attempt cap.
-    Once hit, the field must stop being retried but still surface as a real
-    CoverageGap via exhausted_gaps, not vanish."""
     try:
         async with SessionFactory() as session:
             domain = f"https://attempt-cap-{uuid4().hex[:8]}.example.com/"
@@ -1429,14 +1424,14 @@ async def test_gap_check_node_stops_retrying_a_field_past_its_attempt_cap() -> N
 
             state = {
                 "company_id": str(company.id),
-                "gaps": [{"field": "profile.description", "attempts": 1}],
+                "gaps": [{"field": "profile.description", "attempts": 0}],
                 "exhausted_gaps": [],
                 "retry_round": 1,
             }
-            result = await gap_check_node(state, session=session)
+            result = await gap_check_node(state, session=session, tier="quick")
 
-            assert result["gaps"] == []  # dropped — hit the attempt cap, stop retrying
-            assert result["exhausted_gaps"] == [{"field": "profile.description", "attempts": 2}]
+            assert result["gaps"] == []
+            assert result["exhausted_gaps"] == [{"field": "profile.description", "attempts": 1}]
             await session.rollback()
     finally:
         await engine.dispose()
