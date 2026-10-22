@@ -6,6 +6,7 @@ runs inside one uncommitted transaction, rolled back at teardown — the
 repository functions only ever flush(), never commit(), so nothing persists.
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -37,8 +38,9 @@ async def session() -> AsyncSession:
 
 @pytest.mark.asyncio
 async def test_get_or_create_company_dedups_by_domain(session: AsyncSession) -> None:
-    first = await get_or_create_company(session, name="Wix.com", domain="https://wix.com/")
-    second = await get_or_create_company(session, name="Wix.com (dup)", domain="https://wix.com/")
+    domain = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/"
+    first = await get_or_create_company(session, name="Wix.com", domain=domain)
+    second = await get_or_create_company(session, name="Wix.com (dup)", domain=domain)
 
     assert first.id == second.id
     assert second.name == "Wix.com"  # the original row, not overwritten by the dup call
@@ -46,20 +48,15 @@ async def test_get_or_create_company_dedups_by_domain(session: AsyncSession) -> 
 
 @pytest.mark.asyncio
 async def test_get_or_create_source_reports_content_change(session: AsyncSession) -> None:
-    source, changed1 = await get_or_create_source(
-        session, url="https://wix.com/about", content_hash="hash-a"
-    )
+    url = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/about"
+    source, changed1 = await get_or_create_source(session, url=url, content_hash="hash-a")
     assert changed1 is True
 
-    same, changed2 = await get_or_create_source(
-        session, url="https://wix.com/about", content_hash="hash-a"
-    )
+    same, changed2 = await get_or_create_source(session, url=url, content_hash="hash-a")
     assert same.id == source.id
     assert changed2 is False
 
-    updated, changed3 = await get_or_create_source(
-        session, url="https://wix.com/about", content_hash="hash-b"
-    )
+    updated, changed3 = await get_or_create_source(session, url=url, content_hash="hash-b")
     assert updated.id == source.id
     assert changed3 is True
     assert updated.content_hash == "hash-b"
@@ -67,8 +64,9 @@ async def test_get_or_create_source_reports_content_change(session: AsyncSession
 
 @pytest.mark.asyncio
 async def test_add_claim_and_get_fresh_claims(session: AsyncSession) -> None:
-    company = await get_or_create_company(session, name="Wix.com", domain="https://wix.com/")
-    source, _ = await get_or_create_source(session, url="https://wix.com/", content_hash="h1")
+    domain = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/"
+    company = await get_or_create_company(session, name="Wix.com", domain=domain)
+    source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
 
     await add_claim(
         session,
@@ -97,8 +95,9 @@ async def test_add_claim_and_get_fresh_claims(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_claims_are_append_only(session: AsyncSession) -> None:
     """Calling add_claim twice for the same field creates two rows, never updates one."""
-    company = await get_or_create_company(session, name="Wix.com", domain="https://wix.com/")
-    source, _ = await get_or_create_source(session, url="https://wix.com/", content_hash="h1")
+    domain = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/"
+    company = await get_or_create_company(session, name="Wix.com", domain=domain)
+    source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
 
     await add_claim(
         session,
@@ -130,8 +129,9 @@ async def test_claims_are_append_only(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_create_and_save_report(session: AsyncSession) -> None:
     user = await get_or_create_cli_user(session)
-    company = await get_or_create_company(session, name="Wix.com", domain="https://wix.com/")
-    source, _ = await get_or_create_source(session, url="https://wix.com/", content_hash="h1")
+    domain = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/"
+    company = await get_or_create_company(session, name="Wix.com", domain=domain)
+    source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
     claim = await add_claim(
         session,
         company_id=company.id,

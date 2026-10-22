@@ -24,6 +24,7 @@ from fieldbrief.agents import prompts
 from fieldbrief.agents.field_checklist import MAX_RETRY_ROUNDS as TIER_MAX_RETRY_ROUNDS
 from fieldbrief.agents.field_checklist import Tier, fields_for
 from fieldbrief.agents.llm_schemas import ClaimVerification, ExtractionResult
+from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.db.models import Claim, Source
 from fieldbrief.db.repositories import add_claim, get_fresh_claims, get_or_create_source
@@ -54,6 +55,8 @@ SEARCH_GROUPS: list[tuple[set[str], str]] = [
     ({"environment.regulation"}, "{name} regulation compliance"),
 ]
 RESULTS_PER_SEARCH = 4  # enough headroom for a few retry rounds to each see a fresh result
+
+_NULL_PROGRESS = NullProgressSink()
 
 
 def _max_age(field: str) -> timedelta:
@@ -86,6 +89,7 @@ async def research_node(
     fetcher: Fetcher,
     http_client: httpx.AsyncClient,
     searxng_url: str,
+    progress: ProgressSink = _NULL_PROGRESS,
 ) -> dict[str, Any]:
     """One research round. The overview/domain page covers most fields in one
     extraction call (design.md §9: "fetch -> extract claims ... for all known
@@ -104,6 +108,8 @@ async def research_node(
     gap_fields = {g["field"] for g in state["gaps"]}
     round_index = state["retry_round"]
     claim_ids = list(state["claim_ids"])
+
+    await progress.emit(Stage.RESEARCHING, f"Researching {company_name}")
 
     urls: list[str] = []
     if company_domain:
@@ -128,6 +134,7 @@ async def research_node(
             urls.append(results[min(round_index, len(results) - 1)].url)
 
     for url in urls:
+        await progress.emit(Stage.RESEARCHING, f"{company_name}: reading {urlparse(url).netloc}")
         html = await fetcher.fetch(url)
         if html is None:
             continue
@@ -153,7 +160,12 @@ async def research_node(
             stage="research",
         )
         for extracted in extraction.claims:
-            snippet = cleaned[:500]
+            # The full cleaned page, not a fixed-size head slice: a claim
+            # correctly extracted from anywhere past the first ~500 chars
+            # used to fail verification purely because the snippet it was
+            # checked against never contained it — a real bug that silently
+            # turned good extractions into "not found" gaps.
+            snippet = cleaned
             value = dict(extracted.value)
             if extracted.bmc_block:
                 value["bmc_block"] = extracted.bmc_block

@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 from sqlalchemy import delete, select
 
@@ -22,6 +23,7 @@ from fieldbrief.agents.llm_schemas import (
     ExtractionResult,
     FrameworkSynthesisResult,
 )
+from fieldbrief.agents.nodes import research_node
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.db.models import (
     Claim,
@@ -325,8 +327,6 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
             budget = Budget(limit_usd=5.0)
             gateway = LLMGateway()
             fetcher = Fetcher()
-            import httpx
-
             http_client = httpx.AsyncClient()
             wikidata_client = httpx.AsyncClient()
 
@@ -424,5 +424,124 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
                 if source_ids:
                     await cleanup_session.execute(delete(Source).where(Source.id.in_(source_ids)))
                 await cleanup_session.execute(delete(Company).where(Company.id == company_id))
+            await cleanup_session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_research_node_verifies_claims_from_anywhere_on_the_page() -> None:
+    """Regression test for a real bug found reading the code after a live
+    run came back with almost everything "not found": verification used to
+    check every claim against snippet = cleaned[:500] — always the first
+    500 characters of the page, regardless of where the claim actually came
+    from. A claim correctly extracted from later in the page always failed
+    this bogus check, so gap_check_node never cleared its gap. This fact
+    sits well past char 500; the claim must still verify true."""
+    marker = "ACME_LATE_PAGE_FACT"
+    long_prefix = "Irrelevant filler sentence. " * 30
+    assert len(long_prefix) > 500
+    page_html = (
+        f"<html><body><article><p>{long_prefix}{marker} is a real, specific fact about "
+        "Acme Corp, long enough for trafilatura to treat as genuine article content.</p>"
+        "</article></body></html>"
+    )
+
+    async def fake_fetch_long_page(self: Fetcher, url: str) -> str:
+        return page_html
+
+    captured_verify_prompts: list[str] = []
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        messages = kwargs["messages"]
+        if schema is ExtractionResult:
+            result = ExtractionResult(
+                claims=[{"field": "profile.description", "statement": marker, "relevance": 0.9}]
+            )
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            prompt_text = messages[-1]["content"]
+            captured_verify_prompts.append(prompt_text)
+            verified = marker in prompt_text
+            return _fake_llm_response(
+                ClaimVerification(verified=verified, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://acme-late-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Acme Corp", domain=domain)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_long_page),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                result = await research_node(
+                    {
+                        "report_id": str(report.id),
+                        "company_id": str(company.id),
+                        "company_name": company.name,
+                        "company_domain": domain,
+                        "is_target": True,
+                        "tier": "quick",
+                        "retry_round": 0,
+                        "gaps": [{"field": "profile.description", "attempts": 0}],
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert len(captured_verify_prompts) == 1
+            assert marker in captured_verify_prompts[0]
+
+            assert len(result["claim_ids"]) == 1
+            claim = await session.get(Claim, uuid.UUID(result["claim_ids"][0]))
+            assert claim is not None
+            assert claim.verified is True
+            await session.commit()
+    finally:
+        async with SessionFactory() as cleanup_session:
+            if created_company_id is not None:
+                claims_result = await cleanup_session.execute(
+                    select(Claim.source_id).where(Claim.company_id == created_company_id)
+                )
+                source_ids = {row[0] for row in claims_result.all()}
+                await cleanup_session.execute(
+                    delete(Claim).where(Claim.company_id == created_company_id)
+                )
+                if source_ids:
+                    await cleanup_session.execute(delete(Source).where(Source.id.in_(source_ids)))
+            if created_report_id is not None:
+                await cleanup_session.execute(delete(Report).where(Report.id == created_report_id))
+            if created_company_id is not None:
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
             await cleanup_session.commit()
         await engine.dispose()
