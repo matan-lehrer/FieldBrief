@@ -3,7 +3,7 @@
 import httpx
 from pydantic import BaseModel, Field
 
-from fieldbrief.fetch.clean import clean_html
+from fieldbrief.fetch.clean import clean_html, select_relevant_passages
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
 from fieldbrief.llm.budget import Budget
@@ -26,7 +26,17 @@ def _discovery_prompt(company_name: str, page_text: str) -> list[dict[str, str]]
         "actually names it as a competitor/alternative — never add one from "
         "general knowledge. If the page names none, return an empty list."
     )
-    user = f"Company: {company_name}\n\nPage text:\n{page_text[:6000]}"
+    keywords = {
+        *company_name.split(),
+        "competitor",
+        "competitors",
+        "alternative",
+        "alternatives",
+        "rival",
+        "vs",
+    }
+    bounded_text = select_relevant_passages(page_text, keywords, max_chars=6000)
+    user = f"Company: {company_name}\n\nPage text:\n{bounded_text}"
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},

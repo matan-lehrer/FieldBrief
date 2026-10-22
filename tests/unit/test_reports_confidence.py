@@ -6,14 +6,16 @@ from fieldbrief.db.models import Claim, Source
 from fieldbrief.reports.confidence import compute_citation
 
 
-def _claim(source_id: uuid.UUID, relevance: float, verified: bool) -> Claim:
+def _claim(
+    source_id: uuid.UUID, relevance: float, verified: bool, value: dict | None = None
+) -> Claim:
     claim = Claim(
         id=uuid.uuid4(),
         company_id=uuid.uuid4(),
         source_id=source_id,
         field="profile.description",
         statement="x",
-        value={},
+        value=value or {},
         snippet="x",
         relevance=relevance,
         verified=verified,
@@ -83,3 +85,61 @@ def test_score_never_exceeds_one() -> None:
 def test_requires_at_least_one_claim() -> None:
     with pytest.raises(ValueError, match="at least one claim"):
         compute_citation([], {})
+
+
+def test_agreeing_numeric_sources_corroborate_and_score_strong() -> None:
+    source1 = _source("official")
+    source2 = _source("news")
+    claim1 = _claim(source1.id, relevance=1.0, verified=True, value={"amount_usd": 10_000_000})
+    claim2 = _claim(source2.id, relevance=1.0, verified=True, value={"amount_usd": 10_200_000})
+
+    citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
+
+    assert citation.confidence.status == "strong"
+    assert citation.confidence.corroboration == 2
+
+
+def test_conflicting_numeric_sources_dont_get_a_corroboration_bonus() -> None:
+    """Two sources quoting very different numbers for the same field aren't
+    mutual corroboration — distinct URLs agreeing by coincidence that
+    *something* was reported isn't the same as agreeing on the value."""
+    # Reliability < 1.0 (news, not official) leaves headroom for the
+    # corroboration bonus to actually move the score either way.
+    source1 = _source("news")
+    source2 = _source("news")
+    claim1 = _claim(source1.id, relevance=0.9, verified=True, value={"amount_usd": 10_000_000})
+    claim2 = _claim(source2.id, relevance=0.9, verified=True, value={"amount_usd": 50_000_000})
+
+    agreeing1 = _claim(source1.id, relevance=0.9, verified=True, value={"amount_usd": 10_000_000})
+    agreeing2 = _claim(source2.id, relevance=0.9, verified=True, value={"amount_usd": 10_200_000})
+
+    conflicting_citation = compute_citation(
+        [claim1, claim2], {source1.id: source1, source2.id: source2}
+    )
+    agreeing_citation = compute_citation(
+        [agreeing1, agreeing2], {source1.id: source1, source2.id: source2}
+    )
+
+    assert conflicting_citation.confidence.status == "conflicting"
+    # Same corroboration count either way — only the score/status reflect
+    # whether the sources actually agree.
+    assert conflicting_citation.confidence.corroboration == 2
+    assert conflicting_citation.confidence.score < agreeing_citation.confidence.score
+
+
+def test_unverified_claim_status_is_unverified() -> None:
+    source = _source("official")
+    claim = _claim(source.id, relevance=1.0, verified=False)
+
+    citation = compute_citation([claim], {source.id: source})
+
+    assert citation.confidence.status == "unverified"
+
+
+def test_single_verified_source_status_is_supported() -> None:
+    source = _source("official")
+    claim = _claim(source.id, relevance=1.0, verified=True)
+
+    citation = compute_citation([claim], {source.id: source})
+
+    assert citation.confidence.status == "supported"

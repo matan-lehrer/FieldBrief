@@ -28,6 +28,15 @@ class ExtractedClaim(BaseModel):
     relevance: float = Field(
         ge=0, le=1, description="Is this page genuinely about the company, or a passing mention?"
     )
+    excerpt: str | None = Field(
+        default=None,
+        description=(
+            "An exact, verbatim short quote (one or two sentences) copied "
+            "character-for-character from the page text that supports this claim. "
+            "Never paraphrase here — omit if no single short passage directly "
+            "supports it."
+        ),
+    )
     bmc_block: BMC_BLOCKS | None = Field(
         default=None,
         description=(

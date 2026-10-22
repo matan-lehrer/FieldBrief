@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fieldbrief.db.repositories import (
     add_claim,
     create_report,
+    get_covered_fields_from_source,
     get_fresh_claims,
     get_or_create_cli_user,
     get_or_create_company,
@@ -90,6 +91,56 @@ async def test_add_claim_and_get_fresh_claims(session: AsyncSession) -> None:
         session, company_id=company.id, field="profile.description", max_age=timedelta(seconds=-1)
     )
     assert stale_only == []
+
+
+@pytest.mark.asyncio
+async def test_get_covered_fields_from_source_is_scoped_per_company(
+    session: AsyncSession,
+) -> None:
+    """The real dedup bug: a Source's content_hash is global, so "unchanged"
+    used to mean "skip" for ANY company or field, not just the one that
+    already has a claim from it. This must say a field is only "covered"
+    when THIS company has a fresh claim from THIS source for it."""
+    domain_a = f"https://company-a-{uuid.uuid4().hex[:8]}.example.com/"
+    domain_b = f"https://company-b-{uuid.uuid4().hex[:8]}.example.com/"
+    company_a = await get_or_create_company(session, name="Company A", domain=domain_a)
+    company_b = await get_or_create_company(session, name="Company B", domain=domain_b)
+    shared_url = f"https://industry-report-{uuid.uuid4().hex[:8]}.example.com/"
+    source, _ = await get_or_create_source(session, url=shared_url, content_hash="h1")
+
+    await add_claim(
+        session,
+        company_id=company_a.id,
+        source_id=source.id,
+        field="profile.description",
+        statement="Company A makes widgets.",
+        value={},
+        snippet="",
+        relevance=0.9,
+        verified=True,
+    )
+
+    max_ages = {"profile.description": timedelta(days=30), "offering.products": timedelta(days=30)}
+
+    # Company A already has a fresh claim for this field from this source.
+    covered_a = await get_covered_fields_from_source(
+        session, company_a.id, source.id, ["profile.description"], max_ages
+    )
+    assert covered_a == {"profile.description"}
+
+    # Company B has never touched this source at all — nothing covered,
+    # even though the Source row's content hasn't changed since A fetched it.
+    covered_b = await get_covered_fields_from_source(
+        session, company_b.id, source.id, ["profile.description"], max_ages
+    )
+    assert covered_b == set()
+
+    # A new field for company A, from the same already-seen source, isn't
+    # covered either — one claim from a page doesn't cover every field.
+    covered_new_field = await get_covered_fields_from_source(
+        session, company_a.id, source.id, ["offering.products"], max_ages
+    )
+    assert covered_new_field == set()
 
 
 @pytest.mark.asyncio

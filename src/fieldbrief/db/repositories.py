@@ -171,6 +171,37 @@ async def add_claim(
     return claim
 
 
+async def get_covered_fields_from_source(
+    session: AsyncSession,
+    company_id: uuid.UUID,
+    source_id: uuid.UUID,
+    fields: list[str],
+    max_age_by_field: dict[str, timedelta],
+) -> set[str]:
+    """Which of `fields` already have a FRESH claim for this exact (company,
+    source) pair. Used instead of the Source row's global content_hash flag
+    to decide whether re-extracting an unchanged page is actually redundant
+    *for this company* — a changed=False Source used to mean "skip" even for
+    a company that had never touched this URL before, a field never
+    extracted from it, or a claim that had already gone stale."""
+    if not fields:
+        return set()
+    result = await session.execute(
+        select(Claim.field, Claim.extracted_at).where(
+            Claim.company_id == company_id,
+            Claim.source_id == source_id,
+            Claim.field.in_(fields),
+        )
+    )
+    now = _utcnow()
+    covered: set[str] = set()
+    for field, extracted_at in result.all():
+        max_age = max_age_by_field.get(field, timedelta(days=30))
+        if extracted_at >= now - max_age:
+            covered.add(field)
+    return covered
+
+
 async def get_fresh_claims(
     session: AsyncSession, company_id: uuid.UUID, field: str, max_age: timedelta
 ) -> list[Claim]:

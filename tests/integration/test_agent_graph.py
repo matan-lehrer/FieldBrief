@@ -24,7 +24,7 @@ from fieldbrief.agents.llm_schemas import (
     ExtractionResult,
     FrameworkSynthesisResult,
 )
-from fieldbrief.agents.nodes import analyze_node, research_node
+from fieldbrief.agents.nodes import analyze_node, plan_node, research_node
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.db.models import (
     Claim,
@@ -35,7 +35,13 @@ from fieldbrief.db.models import (
     ReportCompetitor,
     Source,
 )
-from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
+from fieldbrief.db.repositories import (
+    add_claim,
+    create_report,
+    get_or_create_cli_user,
+    get_or_create_company,
+    get_or_create_source,
+)
 from fieldbrief.db.session import SessionFactory, engine
 from fieldbrief.fetch.edgar import SUBMISSIONS_URL
 from fieldbrief.fetch.http import Fetcher
@@ -411,6 +417,12 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
                     delete(ReportCompetitor).where(ReportCompetitor.report_id == created_report_id)
                 )
                 await cleanup_session.execute(delete(Report).where(Report.id == created_report_id))
+            # Claims for every company deleted before any Source row: two
+            # companies can now legitimately share a Source (dedup is scoped
+            # per company/source/field, not a blanket skip for a second
+            # company), so deleting sources company-by-company could hit one
+            # still referenced by a company not yet cleaned up.
+            all_source_ids: set[uuid.UUID] = set()
             for company_id in created_company_ids:
                 await cleanup_session.execute(
                     delete(CompanyCompetitor).where(
@@ -421,10 +433,11 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
                 claims_result = await cleanup_session.execute(
                     select(Claim.source_id).where(Claim.company_id == company_id)
                 )
-                source_ids = {row[0] for row in claims_result.all()}
+                all_source_ids.update(row[0] for row in claims_result.all())
                 await cleanup_session.execute(delete(Claim).where(Claim.company_id == company_id))
-                if source_ids:
-                    await cleanup_session.execute(delete(Source).where(Source.id.in_(source_ids)))
+            if all_source_ids:
+                await cleanup_session.execute(delete(Source).where(Source.id.in_(all_source_ids)))
+            for company_id in created_company_ids:
                 await cleanup_session.execute(delete(Company).where(Company.id == company_id))
             await cleanup_session.commit()
         await engine.dispose()
@@ -998,3 +1011,294 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
     finally:
         if created_company_id is not None:
             await _cleanup_company(created_company_id, created_report_id)
+
+
+@pytest.mark.asyncio
+async def test_research_node_extracts_for_a_second_company_sharing_an_unchanged_source() -> None:
+    """The real dedup bug: a Source's content_hash is global, so "unchanged"
+    used to mean "skip" for whoever asked, not just the company that already
+    had a claim from it. A second company hitting the exact same page must
+    still get its own claim from it."""
+    shared_url = f"https://shared-page-{uuid4().hex[:8]}.example.com/"
+
+    async def fake_fetch_shared(self: Fetcher, url: str) -> str:
+        return _page("SHARED_PAGE_MARKER")
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        if schema is ExtractionResult:
+            result = ExtractionResult(
+                claims=[
+                    {
+                        "field": "profile.description",
+                        "statement": "Shared page fact.",
+                        "relevance": 0.9,
+                    }
+                ]
+            )
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            return _fake_llm_response(
+                ClaimVerification(verified=True, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_ids: list[uuid.UUID] = []
+    created_report_ids: list[uuid.UUID] = []
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company_a = await get_or_create_company(
+                session, name="Shared Page Co A", domain=f"https://a-{uuid4().hex[:8]}.example.com/"
+            )
+            company_b = await get_or_create_company(
+                session, name="Shared Page Co B", domain=f"https://b-{uuid4().hex[:8]}.example.com/"
+            )
+            created_company_ids.extend([company_a.id, company_b.id])
+            report_a = await create_report(
+                session, user_id=user.id, target_company_id=company_a.id, tier="quick"
+            )
+            report_b = await create_report(
+                session, user_id=user.id, target_company_id=company_b.id, tier="quick"
+            )
+            created_report_ids.extend([report_a.id, report_b.id])
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_shared),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                base_gaps = [{"field": "profile.description", "attempts": 0}]
+                result_a = await research_node(
+                    {
+                        "report_id": str(report_a.id),
+                        "company_id": str(company_a.id),
+                        "company_name": company_a.name,
+                        "company_domain": shared_url,
+                        "company_cik": None,
+                        "is_target": True,
+                        "tier": "quick",
+                        "retry_round": 0,
+                        "gaps": base_gaps,
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+                result_b = await research_node(
+                    {
+                        "report_id": str(report_b.id),
+                        "company_id": str(company_b.id),
+                        "company_name": company_b.name,
+                        "company_domain": shared_url,
+                        "company_cik": None,
+                        "is_target": True,
+                        "tier": "quick",
+                        "retry_round": 0,
+                        "gaps": base_gaps,
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert len(result_a["claim_ids"]) == 1
+            # The regression: company B must ALSO get a claim from the same,
+            # already-seen, unchanged source — not be silently skipped.
+            assert len(result_b["claim_ids"]) == 1
+
+            claim_a = await session.get(Claim, uuid.UUID(result_a["claim_ids"][0]))
+            claim_b = await session.get(Claim, uuid.UUID(result_b["claim_ids"][0]))
+            assert claim_a is not None
+            assert claim_b is not None
+            assert claim_a.source_id == claim_b.source_id  # genuinely the same shared Source
+            assert claim_a.company_id != claim_b.company_id
+            await session.commit()
+    finally:
+        async with SessionFactory() as cleanup_session:
+            all_source_ids: set[uuid.UUID] = set()
+            for cid in created_company_ids:
+                cr = await cleanup_session.execute(
+                    select(Claim.source_id).where(Claim.company_id == cid)
+                )
+                all_source_ids.update(row[0] for row in cr.all())
+                await cleanup_session.execute(delete(Claim).where(Claim.company_id == cid))
+            if all_source_ids:
+                await cleanup_session.execute(delete(Source).where(Source.id.in_(all_source_ids)))
+            for rid in created_report_ids:
+                await cleanup_session.execute(delete(Report).where(Report.id == rid))
+            for cid in created_company_ids:
+                await cleanup_session.execute(delete(Company).where(Company.id == cid))
+            await cleanup_session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_excerpt_is_stored_only_when_genuinely_verbatim() -> None:
+    """A claim's stored snippet must be an actual quote from the page, never
+    a model-generated string presented as if it were one — a claimed
+    excerpt that isn't actually in the page is dropped, not displayed as a
+    fabricated source quotation."""
+    real_sentence = "This exact sentence genuinely appears on the page."
+    page_html = (
+        f"<html><body><article><p>{real_sentence} Padding so trafilatura treats this as "
+        "real article content, long enough to not get rejected as boilerplate noise.</p>"
+        "</article></body></html>"
+    )
+
+    async def fake_fetch_page(self: Fetcher, url: str) -> str:
+        return page_html
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        if schema is ExtractionResult:
+            result = ExtractionResult(
+                claims=[
+                    {
+                        "field": "profile.description",
+                        "statement": "Page confirms the fact.",
+                        "relevance": 0.9,
+                        "excerpt": real_sentence,
+                    },
+                    {
+                        "field": "offering.products",
+                        "statement": "Another claim with a fabricated excerpt.",
+                        "relevance": 0.9,
+                        "excerpt": "This exact sentence never appears anywhere on the page.",
+                    },
+                ]
+            )
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            return _fake_llm_response(
+                ClaimVerification(verified=True, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://excerpt-test-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Excerpt Test Co", domain=domain)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_page),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                result = await research_node(
+                    {
+                        "report_id": str(report.id),
+                        "company_id": str(company.id),
+                        "company_name": company.name,
+                        "company_domain": domain,
+                        "company_cik": None,
+                        "is_target": True,
+                        "tier": "quick",
+                        "retry_round": 0,
+                        "gaps": [
+                            {"field": "profile.description", "attempts": 0},
+                            {"field": "offering.products", "attempts": 0},
+                        ],
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert len(result["claim_ids"]) == 2
+            claims_by_field = {}
+            for cid in result["claim_ids"]:
+                claim = await session.get(Claim, uuid.UUID(cid))
+                assert claim is not None
+                claims_by_field[claim.field] = claim
+
+            assert claims_by_field["profile.description"].snippet == real_sentence
+            assert claims_by_field["offering.products"].snippet == ""
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
+@pytest.mark.asyncio
+async def test_plan_node_requires_several_forces_before_closing_market_forces() -> None:
+    """One tagged claim used to be enough to call market.forces "done" —
+    even though Five Forces (and therefore SWOT's Threats/Opportunities)
+    built from a single force is barely more than a guess."""
+    try:
+        async with SessionFactory() as session:
+            domain = f"https://forces-test-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Forces Test Co", domain=domain)
+            source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
+
+            async def add_force_claim(force: str) -> None:
+                claim = await add_claim(
+                    session,
+                    company_id=company.id,
+                    source_id=source.id,
+                    field="market.forces",
+                    statement=f"{force} claim",
+                    value={"force": force},
+                    snippet="",
+                    relevance=0.9,
+                )
+                claim.verified = True
+                await session.flush()
+
+            plan_state = {"company_id": str(company.id), "tier": "standard", "is_target": True}
+
+            await add_force_claim("rivalry")
+            gaps = await plan_node(plan_state, session=session)
+            assert any(g["field"] == "market.forces" for g in gaps["gaps"])
+
+            await add_force_claim("substitutes")
+            await add_force_claim("buyer_power")
+            gaps_after = await plan_node(plan_state, session=session)
+            assert not any(g["field"] == "market.forces" for g in gaps_after["gaps"])
+
+            await session.rollback()
+    finally:
+        await engine.dispose()
