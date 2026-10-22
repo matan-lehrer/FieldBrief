@@ -32,6 +32,11 @@ class Confidence(BaseModel):
     score: float = Field(ge=0, le=1)
     corroboration: int  # independent sources agreeing
     verified: bool
+    # A reader-facing evidence status derived from the same inputs as
+    # `score` — meant to replace showing `score` as a bare percentage
+    # (easy to misread as "% likely true"). Default exists only so a
+    # report_json saved before this field existed still renders.
+    status: Literal["strong", "supported", "unverified", "conflicting"] = "supported"
 
 
 class Citation(BaseModel):

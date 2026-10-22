@@ -12,7 +12,7 @@ analyze_node completes (agents/orchestrator.py).
 
 import uuid
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,8 +27,13 @@ from fieldbrief.agents.llm_schemas import ClaimVerification, ExtractionResult
 from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.db.models import Claim, Company, Source
-from fieldbrief.db.repositories import add_claim, get_fresh_claims, get_or_create_source
-from fieldbrief.fetch.clean import clean_html, content_hash
+from fieldbrief.db.repositories import (
+    add_claim,
+    get_covered_fields_from_source,
+    get_fresh_claims,
+    get_or_create_source,
+)
+from fieldbrief.fetch.clean import clean_html, content_hash, extract_metadata
 from fieldbrief.fetch.edgar import get_recent_annual_filings
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
@@ -78,6 +83,27 @@ EDGAR_FIELDS: set[str] = {
 # and one successful source closes it).
 CORROBORATE_FIELDS: set[str] = EDGAR_FIELDS | {"market.forces"}
 
+# The two ADR-0007 tagged, multi-dimension fields: closing them on a single
+# claim meant one claim about any one force/resource looked like "done,"
+# even though the framework it feeds (Five Forces / VRIO, and therefore
+# SWOT's Strengths/Weaknesses) needs several distinct sub-dimensions covered
+# to be more than a guess.
+TAGGED_FIELD_KEY: dict[str, str] = {
+    "market.forces": "force",
+    "resources.advantages": "resource",
+}
+MIN_DISTINCT_TAGS: dict[str, int] = {
+    "market.forces": 3,  # of 5 possible forces
+    "resources.advantages": 2,
+}
+
+# A handful of domain patterns worth classifying more precisely than the
+# official-domain/everything-else split used to manage: a government filing
+# or a company's own press release fetched via search shouldn't read as
+# generic "news," and a personal blog platform shouldn't read as official.
+_PRESS_WIRE_DOMAINS = {"prnewswire.com", "businesswire.com", "globenewswire.com"}
+_BLOG_DOMAIN_HINTS = ("medium.com", "substack.com", "blogspot.com", "wordpress.com", "tumblr.com")
+
 _NULL_PROGRESS = NullProgressSink()
 
 
@@ -85,9 +111,47 @@ def _max_age(field: str) -> timedelta:
     return FRESHNESS_MAX_AGE.get(field, DEFAULT_FRESHNESS_MAX_AGE)
 
 
+def _normalize_for_match(text: str) -> str:
+    return " ".join(text.split()).lower()
+
+
+def _as_datetime(d: date | None) -> datetime | None:
+    """Source.published_at is a naive-UTC datetime column (matching every
+    other timestamp in db/repositories.py); metadata extraction only ever
+    gives us a date, so midnight UTC on that date is as precise as it gets."""
+    return datetime(d.year, d.month, d.day) if d else None
+
+
+def _distinct_tags(claims: list[Claim], tag_key: str) -> set[str]:
+    return {str(c.value[tag_key]) for c in claims if c.value.get(tag_key)}
+
+
+def _field_resolved(fresh_claims: list[Claim], field: str) -> bool:
+    """A field is "done" once it has at least one fresh, verified claim —
+    and, for the two tagged multi-dimension fields, enough distinct
+    sub-dimensions covered that the framework it feeds isn't built on a
+    single guess."""
+    verified_fresh = [c for c in fresh_claims if c.verified]
+    if not verified_fresh:
+        return False
+    tag_key = TAGGED_FIELD_KEY.get(field)
+    if tag_key is None:
+        return True
+    return len(_distinct_tags(verified_fresh, tag_key)) >= MIN_DISTINCT_TAGS[field]
+
+
 def _source_type(url: str, company_domain: str | None) -> str:
-    if company_domain and urlparse(url).netloc == urlparse(company_domain).netloc:
-        return "official"
+    netloc = urlparse(url).netloc.lower().removeprefix("www.")
+    if company_domain:
+        domain_netloc = urlparse(company_domain).netloc.lower().removeprefix("www.")
+        if netloc == domain_netloc:
+            return "official"
+    if netloc.endswith(".gov"):
+        return "filing"
+    if netloc in _PRESS_WIRE_DOMAINS:
+        return "official"  # a company-issued press release, not independent commentary
+    if any(hint in netloc for hint in _BLOG_DOMAIN_HINTS):
+        return "blog"
     return "news"
 
 
@@ -97,7 +161,7 @@ async def plan_node(state: GraphState, *, session: AsyncSession) -> dict[str, An
     gaps = []
     for field in fields:
         fresh = await get_fresh_claims(session, company_id, field, _max_age(field))
-        if not any(c.verified for c in fresh):
+        if not _field_resolved(fresh, field):
             gaps.append({"field": field, "attempts": 0})
     return {"gaps": gaps, "retry_round": 0}
 
@@ -128,12 +192,16 @@ async def _extract_and_store_claims(
         stage="research",
     )
     for extracted in extraction.claims:
-        # The full cleaned page, not a fixed-size head slice: a claim
-        # correctly extracted from anywhere past the first ~500 chars
-        # used to fail verification purely because the snippet it was
-        # checked against never contained it — a real bug that silently
-        # turned good extractions into "not found" gaps.
-        snippet = cleaned
+        # The model's own excerpt, not the whole page: a claim used to store
+        # the entire cleaned page as its "snippet," so every claim from one
+        # page duplicated the full article and nothing pointed at the actual
+        # supporting sentence. Only trust the excerpt if it's genuinely
+        # verbatim (a cheap, deterministic substring check) — a quote that
+        # isn't actually in the page is a fabricated "source quotation," not
+        # evidence, so it's dropped rather than displayed as one.
+        excerpt = extracted.excerpt
+        if excerpt and _normalize_for_match(excerpt) not in _normalize_for_match(cleaned):
+            excerpt = None
         value = dict(extracted.value)
         if extracted.bmc_block:
             value["bmc_block"] = extracted.bmc_block
@@ -144,12 +212,16 @@ async def _extract_and_store_claims(
             field=extracted.field,
             statement=extracted.statement,
             value=value,
-            snippet=snippet,
+            snippet=excerpt or "",
             relevance=extracted.relevance,
         )
+        # Verification still checks the statement against the full cleaned
+        # page, not the (possibly empty/short) stored excerpt — a claim can
+        # be genuinely supported by the page even when no single sentence
+        # was a clean enough verbatim quote to keep.
         verification = await gateway.call(
             Task.VERIFY,
-            prompts.verification_prompt(extracted.statement, snippet),
+            prompts.verification_prompt(extracted.statement, cleaned),
             ClaimVerification,
             budget,
             report_id=report_id,
@@ -191,14 +263,21 @@ async def _research_financials_via_edgar(
         cleaned = clean_html(response.text)
         if cleaned is None:
             continue
+        title, published_date = extract_metadata(response.text)
         source, changed = await get_or_create_source(
             session,
             url=filing.document_url,
             content_hash=content_hash(cleaned),
             source_type="filing",
+            title=title,
+            published_at=_as_datetime(published_date),
         )
         if not changed:
-            continue
+            covered = await get_covered_fields_from_source(
+                session, company_id, source.id, fields, {f: _max_age(f) for f in fields}
+            )
+            if covered.issuperset(fields):
+                continue
         await _extract_and_store_claims(
             session=session,
             gateway=gateway,
@@ -262,15 +341,19 @@ async def research_node(
             claim_ids=claim_ids,
         )
 
-    urls: list[str] = []
+    # (url, search-result title or None — the domain-only overview fetch has
+    # no search result to carry a title from; extract_metadata() below fills
+    # that gap from the page itself when a search title isn't available).
+    urls: list[tuple[str, str | None]] = []
     if company_domain:
-        urls.append(company_domain)
+        urls.append((company_domain, None))
     else:
         results = await search(
             http_client, searxng_url, f"{company_name} company overview", limit=RESULTS_PER_SEARCH
         )
         if results:
-            urls.append(results[min(round_index, len(results) - 1)].url)
+            picked = results[min(round_index, len(results) - 1)]
+            urls.append((picked.url, picked.title))
 
     for group_fields, query_template in SEARCH_GROUPS:
         if not (group_fields & gap_fields):
@@ -283,19 +366,19 @@ async def research_node(
         )
         if not results:
             continue
-        picks = [results[min(round_index, len(results) - 1)].url]
+        picks = [results[min(round_index, len(results) - 1)]]
         if group_fields & CORROBORATE_FIELDS and len(results) > 1:
             # A second, independent source in the SAME round — corroboration
             # otherwise never happens in practice: a retry round only fires
             # while the gap is still open, and one successful source closes
             # it immediately (reports/confidence.py's corroboration bonus
             # was dead code without this).
-            second = results[min(round_index + 1, len(results) - 1)].url
-            if second not in picks:
+            second = results[min(round_index + 1, len(results) - 1)]
+            if second.url not in {p.url for p in picks}:
                 picks.append(second)
-        urls.extend(picks)
+        urls.extend((p.url, p.title) for p in picks)
 
-    for url in urls:
+    for url, search_title in urls:
         await progress.emit(Stage.RESEARCHING, f"{company_name}: reading {urlparse(url).netloc}")
         html = await fetcher.fetch(url)
         if html is None:
@@ -304,14 +387,30 @@ async def research_node(
         if cleaned is None:
             continue
 
+        meta_title, published_date = extract_metadata(html)
         source, changed = await get_or_create_source(
             session,
             url=url,
             content_hash=content_hash(cleaned),
             source_type=_source_type(url, company_domain),
+            title=search_title or meta_title,
+            published_at=_as_datetime(published_date),
         )
         if not changed:
-            continue  # same content already extracted previously — skip re-extraction
+            # The page hasn't moved since someone last fetched it — but
+            # "someone" might have been a different company, or a round
+            # that didn't need today's gap fields. Only skip re-extraction
+            # when THIS company already has fresh claims from THIS source
+            # for every field this fetch is targeting.
+            covered = await get_covered_fields_from_source(
+                session,
+                company_id,
+                source.id,
+                sorted(gap_fields),
+                {f: _max_age(f) for f in gap_fields},
+            )
+            if covered.issuperset(gap_fields):
+                continue
 
         await _extract_and_store_claims(
             session=session,
@@ -334,7 +433,7 @@ async def gap_check_node(state: GraphState, *, session: AsyncSession) -> dict[st
     remaining = []
     for gap in state["gaps"]:
         fresh = await get_fresh_claims(session, company_id, gap["field"], _max_age(gap["field"]))
-        if any(c.verified for c in fresh):
+        if _field_resolved(fresh, gap["field"]):
             continue  # resolved — drop from gaps
         remaining.append({"field": gap["field"], "attempts": gap["attempts"] + 1})
     return {"gaps": remaining, "retry_round": state["retry_round"] + 1}
@@ -369,12 +468,22 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
         sources_result = await session.execute(select(Source).where(Source.id.in_(source_ids)))
         sources = {s.id: s for s in sources_result.scalars().all()}
 
+    # Every verified claim ever extracted used to feed the snapshot, with no
+    # age limit — a revenue claim from a year-old article and one from
+    # yesterday blended into the same Citation as if they were the same
+    # fact. Group by field for the "stale" check, but only fresh claims
+    # (same per-field window gap_check already uses) ever reach a Citation.
+    now = datetime.now(UTC).replace(tzinfo=None)
     by_field: dict[str, list[Claim]] = defaultdict(list)
+    fresh_by_field: dict[str, list[Claim]] = defaultdict(list)
     for claim in claims:
         by_field[claim.field].append(claim)
+        if claim.extracted_at >= now - _max_age(claim.field):
+            fresh_by_field[claim.field].append(claim)
+    stale = bool(set(by_field) - set(fresh_by_field))
 
     def citation_for(field: str) -> dict[str, Any] | None:
-        field_claims = by_field.get(field)
+        field_claims = fresh_by_field.get(field)
         if not field_claims:
             return None
         return compute_citation(field_claims, sources).model_dump(mode="json")
@@ -386,7 +495,7 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
     # nowhere to go. First verified claim that supplies each half wins.
     hq: str | None = None
     founded: str | None = None
-    for claim in by_field.get("profile.hq_founded", []):
+    for claim in fresh_by_field.get("profile.hq_founded", []):
         if hq is None and claim.value.get("hq"):
             hq = str(claim.value["hq"])
         if founded is None and claim.value.get("founded_year"):
@@ -415,6 +524,6 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
         "profitability": citation_for("financials.profitability"),
         "funding_or_cap": citation_for("financials.funding_or_cap"),
         "recent_events": citation_for("events.recent"),
-        "freshness": {"as_of": date.today().isoformat(), "stale": False},
+        "freshness": {"as_of": date.today().isoformat(), "stale": stale},
     }
     return {"company_snapshot": snapshot}

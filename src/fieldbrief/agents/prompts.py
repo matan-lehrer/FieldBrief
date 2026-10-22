@@ -4,6 +4,7 @@ nodes.py so prompt wording can change without touching call/control flow."""
 import uuid
 
 from fieldbrief.db.models import Claim
+from fieldbrief.fetch.clean import select_relevant_passages
 
 FIELD_DESCRIPTIONS: dict[str, str] = {
     "profile.description": "What the company does, in a sentence or two",
@@ -38,12 +39,31 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
 }
 
 
+def _extraction_keywords(company_name: str, fields: list[str]) -> set[str]:
+    keywords = set(company_name.split())
+    for f in fields:
+        keywords.update(f.replace(".", " ").replace("_", " ").split())
+        keywords.update(FIELD_DESCRIPTIONS.get(f, "").replace(",", " ").replace("/", " ").split())
+    return keywords
+
+
 def extraction_prompt(company_name: str, page_text: str, fields: list[str]) -> list[dict[str, str]]:
     field_list = "\n".join(f"- {f}: {FIELD_DESCRIPTIONS.get(f, f)}" for f in fields)
+    # Bounded, relevance-ranked passage selection instead of a blind head
+    # slice (`page_text[:8000]`) — a claim three screens down the page used
+    # to never reach the model at all, regardless of how clearly it answered
+    # one of the requested fields.
+    bounded_text = select_relevant_passages(
+        page_text, _extraction_keywords(company_name, fields), max_chars=8000
+    )
     system = (
         "You extract factual claims about ONE company from a web page. Only extract "
         "a claim if the page text actually supports it — never invent or guess. If "
         "the page doesn't address a field, simply omit it; do not fabricate a value. "
+        "For each claim, also set excerpt to an EXACT, verbatim short quote (one or "
+        "two sentences, copied character-for-character from the page text) that "
+        "supports it — never paraphrase the excerpt, and omit it if no single short "
+        "passage directly supports the claim. "
         "Separately, for ANY claim (not just the fields below) that also describes part "
         "of the company's business model, set bmc_block to the matching Business Model "
         "Canvas block (segments, value_propositions, channels, customer_relationships, "
@@ -53,7 +73,7 @@ def extraction_prompt(company_name: str, page_text: str, fields: list[str]) -> l
     user = (
         f"Company: {company_name}\n\n"
         f"Fields to look for (skip any the page doesn't support):\n{field_list}\n\n"
-        f"Page text:\n{page_text[:8000]}"
+        f"Page text:\n{bounded_text}"
     )
     return [
         {"role": "system", "content": system},
