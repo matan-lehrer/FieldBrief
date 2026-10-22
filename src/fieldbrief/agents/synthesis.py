@@ -32,15 +32,19 @@ class CompanyRef:
         self.snapshot = snapshot
 
 
-def _vrio_implication(valuable: bool, rare: bool, inimitable: bool) -> str:
-    """ADR 0009's decision table — `organized` doesn't change the implication,
-    it's carried separately and surfaces in the rationale instead."""
+def _vrio_implication(valuable: bool, rare: bool, inimitable: bool, organized: bool) -> str:
+    """ADR 0013 (superseding that one clause of ADR 0009): a valuable, rare,
+    inimitable resource the company isn't organized to capture value from is
+    a *potential*, not yet *realized*, sustained advantage — distinct enough
+    from both sustained_advantage and parity to warrant its own bucket."""
     if not valuable:
         return "competitive_disadvantage"
     if not rare:
         return "parity"
     if not inimitable:
         return "temporary_advantage"
+    if not organized:
+        return "unexploited_advantage"
     return "sustained_advantage"
 
 
@@ -114,7 +118,9 @@ async def run_synthesis(
             claim_ids = resolve_ids(resource.source_claim_indices)
             if not claim_ids:
                 continue
-            implication = _vrio_implication(resource.valuable, resource.rare, resource.inimitable)
+            implication = _vrio_implication(
+                resource.valuable, resource.rare, resource.inimitable, resource.organized
+            )
             vrio.append(
                 {
                     "resource": resource.resource,
@@ -128,7 +134,11 @@ async def run_synthesis(
                 }
             )
             item = {"statement": resource.rationale, "derived_from": "vrio", "claim_ids": claim_ids}
-            if implication in ("sustained_advantage", "temporary_advantage"):
+            if implication in (
+                "sustained_advantage",
+                "temporary_advantage",
+                "unexploited_advantage",
+            ):
                 strengths.append(item)
             elif implication == "competitive_disadvantage":
                 weaknesses.append(item)
@@ -139,15 +149,20 @@ async def run_synthesis(
             for placement in result.positioning.companies:
                 if not (0 <= placement.company_index < len(companies)):
                     continue
+                claim_ids = resolve_ids(placement.source_claim_indices)
+                if not claim_ids:
+                    continue  # every other roll-up loop drops unsupported items; this must too
                 placed.append(
                     {
                         "company_id": str(companies[placement.company_index].company_id),
                         "x": placement.x,
                         "y": placement.y,
-                        "claim_ids": resolve_ids(placement.source_claim_indices),
+                        "claim_ids": claim_ids,
                     }
                 )
-            if placed:
+            # A positioning map with one company isn't a comparison — omit
+            # the whole chart rather than show something unsupported/sparse.
+            if len(placed) >= 2:
                 positioning = {
                     "x_axis": {
                         "name": "Price",
@@ -164,6 +179,30 @@ async def run_synthesis(
                     "companies": placed,
                 }
 
+        # Strengths/Weaknesses used to come only from VRIO — an internal
+        # capability signal that isn't a resource/advantage claim (shrinking
+        # margins, customer concentration, a disclosed risk factor) had
+        # nowhere to go. Mirrors other_opportunities/other_threats below.
+        for item_draft in result.other_strengths:
+            claim_ids = resolve_ids(item_draft.source_claim_indices)
+            if claim_ids:
+                strengths.append(
+                    {
+                        "statement": item_draft.statement,
+                        "derived_from": item_draft.derived_from,
+                        "claim_ids": claim_ids,
+                    }
+                )
+        for item_draft in result.other_weaknesses:
+            claim_ids = resolve_ids(item_draft.source_claim_indices)
+            if claim_ids:
+                weaknesses.append(
+                    {
+                        "statement": item_draft.statement,
+                        "derived_from": item_draft.derived_from,
+                        "claim_ids": claim_ids,
+                    }
+                )
         for item_draft in result.other_opportunities:
             claim_ids = resolve_ids(item_draft.source_claim_indices)
             if claim_ids:

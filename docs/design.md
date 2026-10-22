@@ -370,32 +370,34 @@ class ReportJSON(BaseModel):
 
 ## 6. Framework method
 
-How each framework in §5 gets filled from claims, and how findings roll up into SWOT (ADR 0009).
+How each framework in §5 gets filled from claims, and how findings roll up into SWOT (ADR 0009, with the organization/evidence fixes in ADR 0013).
 
-**Five Forces.** One `ForceAssessment` per force, from claims tagged `value.force` (ADR 0007). `rating` is the force's *pressure intensity* on the company — `high` is bad (strong competitive pressure), `low` is good. A force with zero tagged claims is omitted, not guessed.
+**Five Forces.** One `ForceAssessment` per force, from claims tagged `value.force` (ADR 0007). `rating` is the force's *pressure intensity* on the company — `high` is bad (strong competitive pressure), `low` is good. A force with zero tagged claims is omitted, not guessed. The fifth force is named `threat_of_new_entrants` (renamed from `entry_barriers`, ADR 0013) specifically so the direction isn't ambiguous: `high` means entry is easy (a real threat), `low` means barriers are high. `rating` also allows `"insufficient_evidence"` — used when claims mention a force without clearly supporting a direction, instead of forcing a guess; omitted from SWOT like `"medium"`.
 
 **Business Model Canvas.** One `BMCBlock` per populated block. 4 of the 9 blocks map directly to a checklist field (`segments` <- `customers.segments`, `value_propositions` <- `offering.value_prop`, `revenue_streams` <- `revenue.model`, `key_partners` <- `partners.key`); the rest (`channels`, `key_resources`, `customer_relationships`, `key_activities`, `cost_structure`) are filled from any claim the extractor tags `value.bmc_block`, regardless of which field produced it — extends the ADR 0007 convention beyond the two fields it introduced. A block with no tagged claims is omitted.
 
-**VRIO.** One `VRIOResource` per distinct `value.resource` tag (ADR 0007). `competitive_implication` is a straight decision table on the three resource properties, `organized` is reported as its own field but does not change the implication:
-| valuable | rare | inimitable | implication |
-|---|---|---|---|
-| no | — | — | `competitive_disadvantage` |
-| yes | no | — | `parity` |
-| yes | yes | no | `temporary_advantage` |
-| yes | yes | yes | `sustained_advantage` |
+**VRIO.** One `VRIOResource` per distinct `value.resource` tag (ADR 0007). `competitive_implication` is a straight decision table on the resource's four properties — `organized` now changes the implication (ADR 0013, superseding that one clause of ADR 0009):
+| valuable | rare | inimitable | organized | implication |
+|---|---|---|---|---|
+| no | — | — | — | `competitive_disadvantage` |
+| yes | no | — | — | `parity` |
+| yes | yes | no | — | `temporary_advantage` |
+| yes | yes | yes | no | `unexploited_advantage` |
+| yes | yes | yes | yes | `sustained_advantage` |
 
-An `organized: false` sustained-advantage resource is a strong candidate for a recommendation ("you have it, you're not capturing it") — that's carried in `rationale`, not in the enum.
+`unexploited_advantage` ("you have it, you're not capturing it") rolls into Strengths for SWOT, same as `temporary_advantage`/`sustained_advantage` — the resource is real; the VRIO table and rationale carry the "not organized" signal for a recommendation to pick up. A resource whose V/R/I can't be confidently assessed is omitted entirely rather than given a 5th "thin evidence" bucket.
 
-**Positioning.** MVP fixes two axes for every report: **Price** (low-cost <-> premium, from `pricing.model` + `financials.*`) and **Differentiation breadth** (niche <-> broad, from `offering.products` + `customers.segments` + `offering.value_prop`). Per-industry or per-report axis choice is deferred (`open-questions.md` "Later").
+**Positioning.** MVP fixes two axes for every report: **Price** (low-cost <-> premium, from `pricing.model` + `financials.*`) and **Differentiation breadth** (niche <-> broad, from `offering.products` + `customers.segments` + `offering.value_prop`). Per-industry or per-report axis choice is deferred (`open-questions.md` "Later"). A company is placed only when the model cites real evidence for its position (no default/empty indices, ADR 0013); the whole map is omitted (not shown half-populated) unless at least 2 companies end up with real support — a one-company "chart" isn't a comparison.
 
 **SWOT roll-up.**
 | Source | Strength | Weakness | Opportunity | Threat |
 |---|---|---|---|---|
 | Five Forces | — | — | `rating: low` | `rating: high` |
-| VRIO | `temporary_advantage`, `sustained_advantage` | `competitive_disadvantage` | — | — |
-| `events.recent`, `market.size_growth`, `environment.regulation` | — | — | by model judgment | by model judgment |
+| VRIO | `temporary_advantage`, `sustained_advantage`, `unexploited_advantage` | `competitive_disadvantage` | — | — |
+| `financials.*`, `risks.disclosed` (internal signal) | by model judgment | by model judgment | — | — |
+| `events.recent`, `market.size_growth`, `environment.regulation` (external signal) | — | — | by model judgment | by model judgment |
 
-`rating: medium` and VRIO `parity` are omitted from SWOT (still visible in their own section) unless the synthesis model has explicit evidence to the contrary. BMC occasionally seeds a finding (`derived_from: "bmc"`) but isn't a primary SWOT input.
+`rating: medium`/`insufficient_evidence` and VRIO `parity` are omitted from SWOT (still visible in their own section) unless the synthesis model has explicit evidence to the contrary. BMC occasionally seeds a finding (`derived_from: "bmc"`) but isn't a primary SWOT input. Strengths/Weaknesses used to come only from VRIO; `other_strengths`/`other_weaknesses` (ADR 0013) now mirror the Opportunities/Threats free-judgment path for an internal capability signal that isn't a `resources.advantages` claim.
 
 **Recommendations.** 3-7 per report. Every recommendation cites its own `claim_ids` (not just inherited through `swot_refs`) and must reference at least one SWOT item — a recommendation with no `swot_refs` is a synthesis bug.
 
@@ -558,6 +560,7 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 - **Fixed SWOT roll-up rules and positioning axes** for MVP; per-industry axes deferred. (ADR 0009)
 - **Two-level fan-out** (company, then field within it); VRIO/BMC target-only; pre-warm needs no `report_id`. (ADR 0010)
 - **Competitor discovery is search-grounded**, not the model's own knowledge — every competitor traces back to a fetched page. (ADR 0012)
+- **VRIO organization changes the implication** (a 5th `unexploited_advantage` bucket), entry-barrier direction is unambiguous (renamed to `threat_of_new_entrants`), positioning requires real evidence per company, and Strengths/Weaknesses get the same internal free-judgment path Opportunities/Threats already had. (ADR 0013)
 - **Nodes pass IDs, not data** — any stage can become a service later; extract only stages with different resource needs (fetch, PDF).
 - **Latency:** cache hits, speculative start, pipelined stages, per-fetch timeouts, cost + time budgets, progressive rendering.
 - **Security:** fetched content is untrusted; strict-schema extraction only.

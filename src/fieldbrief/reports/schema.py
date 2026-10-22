@@ -71,8 +71,10 @@ class ForceAssessment(BaseModel):
     """One Five Forces dimension. claim_ids come from claims tagged
     value.force == force (ADR 0007)."""
 
-    force: Literal["buyer_power", "supplier_power", "substitutes", "entry_barriers", "rivalry"]
-    rating: Literal["low", "medium", "high"]
+    force: Literal[
+        "buyer_power", "supplier_power", "substitutes", "threat_of_new_entrants", "rivalry"
+    ]
+    rating: Literal["low", "medium", "high", "insufficient_evidence"]
     rationale: str
     claim_ids: list[UUID]
 
@@ -113,7 +115,11 @@ class VRIOResource(BaseModel):
     inimitable: bool
     organized: bool
     competitive_implication: Literal[
-        "competitive_disadvantage", "parity", "temporary_advantage", "sustained_advantage"
+        "competitive_disadvantage",
+        "parity",
+        "temporary_advantage",
+        "unexploited_advantage",
+        "sustained_advantage",
     ]
     rationale: str
     claim_ids: list[UUID]
@@ -142,7 +148,15 @@ class PositioningMap(BaseModel):
 class SWOTItem(BaseModel):
     statement: str
     derived_from: Literal[
-        "five_forces", "vrio", "events", "bmc", "market_size", "regulation", "other"
+        "five_forces",
+        "vrio",
+        "events",
+        "bmc",
+        "market_size",
+        "regulation",
+        "financials",
+        "risks",
+        "other",
     ]
     claim_ids: list[UUID]
 

@@ -278,12 +278,17 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                 "x_axis_rationale": "Both charge subscription pricing in a similar band.",
                 "y_axis_rationale": "Target is broader; competitor is more niche.",
                 "companies": [
-                    {"company_index": target_index, "x": 0.6, "y": 0.7, "source_claim_indices": []},
+                    {
+                        "company_index": target_index,
+                        "x": 0.6,
+                        "y": 0.7,
+                        "source_claim_indices": [resources_idx],
+                    },
                     {
                         "company_index": competitor_index,
                         "x": 0.5,
                         "y": 0.3,
-                        "source_claim_indices": [],
+                        "source_claim_indices": [forces_idx],
                     },
                 ],
             },
@@ -329,6 +334,25 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
     created_company_ids: list[uuid.UUID] = []
     created_report_id = None
 
+    # fake_search's URLs are a fixed constant (https://search.example.com/{topic}),
+    # shared across every *invocation* of this test, not just within one run.
+    # Since the dedup fix (v0.5.0) legitimately lets a new company reuse an
+    # already-seen Source, a prior failed run's leftover claims on that
+    # Source would make *this* run's cleanup hit a cross-run FK violation —
+    # not a bug in the fix, a pre-existing test fragility it exposed. A
+    # per-invocation tag keeps each run's Sources genuinely its own.
+    run_tag = uuid4().hex[:8]
+
+    async def fake_search_this_run(
+        client: object, searxng_url: str, query: str, limit: int = 10
+    ) -> list[SearchResult]:
+        topic = _topic_for_query(query)
+        return [
+            SearchResult(
+                title=topic, url=f"https://search-{run_tag}.example.com/{topic}", snippet=None
+            )
+        ]
+
     try:
         async with SessionFactory() as session:
             user = await get_or_create_cli_user(session)
@@ -348,8 +372,8 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
 
             with (
                 patch.object(Fetcher, "fetch", fake_fetch),
-                patch("fieldbrief.agents.nodes.search", new=fake_search),
-                patch("fieldbrief.agents.competitors.search", new=fake_search),
+                patch("fieldbrief.agents.nodes.search", new=fake_search_this_run),
+                patch("fieldbrief.agents.competitors.search", new=fake_search_this_run),
                 patch(
                     "fieldbrief.agents.orchestrator._resolve_competitor",
                     new=_fake_resolve_competitor,

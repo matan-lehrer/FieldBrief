@@ -28,8 +28,9 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
         "tag which specific resource via value.resource, e.g. {'resource': 'network effects'}"
     ),
     "market.forces": (
-        "Buyer/supplier power, substitutes, entry barriers, rivalry — tag which force via "
-        "value.force, one of buyer_power/supplier_power/substitutes/entry_barriers/rivalry"
+        "Buyer/supplier power, substitutes, threat of new entrants, rivalry — tag which force "
+        "via value.force, one of "
+        "buyer_power/supplier_power/substitutes/threat_of_new_entrants/rivalry"
     ),
     "environment.regulation": "Relevant regulation affecting the business",
     "market.size_growth": "Total addressable market size and growth rate",
@@ -101,8 +102,8 @@ def framework_synthesis_prompt(
     """One call producing every cross-company judgment: Five Forces, VRIO
     (target only — the claims list simply won't have resources.advantages
     claims for competitors, per field_checklist's target_only fields),
-    positioning, the "other" SWOT sources (events/market_size/regulation/bmc),
-    and recommendations."""
+    positioning, the "other" SWOT sources (events/market_size/regulation/bmc/
+    financials/risks), and recommendations."""
     name_by_id = {cid: name for cid, name, _ in companies}
     numbered_companies = "\n".join(
         f"[{i}] {name} ({'target' if is_target else 'competitor'})"
@@ -115,16 +116,30 @@ def framework_synthesis_prompt(
     )
     system = (
         "You are a strategy analyst. Using ONLY the numbered claims below, produce: "
-        "Five Forces ratings (one per force, only for forces with supporting claims), "
-        "VRIO assessment for each distinct resource named in resources.advantages claims, "
+        "Five Forces ratings (one per force, only for forces with supporting claims — "
+        "rating is always 'how much pressure this force puts on the company,' high is "
+        "always bad. For threat_of_new_entrants specifically: rate it by how easy entry "
+        "is, not by how high barriers are — low barriers to entry mean HIGH threat, high "
+        "barriers mean LOW threat. Use insufficient_evidence instead of guessing a "
+        "direction when the claims only mention a force in passing); "
+        "VRIO assessment for each distinct resource named in resources.advantages claims "
+        "(assess 'organized' honestly — whether the company is actually set up to "
+        "capture this resource's value, not just whether the resource exists); "
         "a 2-axis positioning map (Price: low-cost vs premium; Differentiation breadth: "
-        "niche vs broad) placing every numbered company, SWOT opportunities/threats from "
-        "events/market_size/regulation/bmc claims only (never five_forces or vrio — those "
-        "are derived separately), and 3-7 recommendations. "
+        "niche vs broad) placing only the companies you have real claims to place — never "
+        "guess a position with no evidence behind it, even if that means placing fewer "
+        "than every company; "
+        "SWOT strengths/weaknesses from financials/risks claims that reveal something "
+        "about the company's OWN capabilities (e.g. shrinking margins, customer "
+        "concentration, a disclosed risk) rather than the market — separate from VRIO, "
+        "which is derived deterministically below, not authored directly; "
+        "SWOT opportunities/threats from events/market_size/regulation/bmc claims only "
+        "(never five_forces or vrio — those are derived separately); "
+        "and 3-7 recommendations. "
         "Every item MUST cite at least one claim by its index — never invent an index, "
         "never cite a claim that doesn't support the point. If the claims don't support "
-        "a force, a resource, a SWOT item, or a recommendation, omit it; fewer honest "
-        "findings beat invented ones."
+        "a force, a resource, a company's position, a SWOT item, or a recommendation, "
+        "omit it; fewer honest findings beat invented ones."
     )
     user = f"Companies:\n{numbered_companies}\n\nNumbered claims:\n{numbered_claims}"
     return [
