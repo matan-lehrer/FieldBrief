@@ -1,11 +1,3 @@
-"""FastStream worker: consumes report jobs, runs the full orchestrator.
-
-Stateless (ADR 0001) — any worker instance can pick up any job; everything
-it needs (target company, tier) is read from the Report row, not the job
-message itself (which only carries report_id + competitor_count, the one
-thing not yet persisted anywhere at submit time).
-"""
-
 import logging
 import uuid
 from typing import cast

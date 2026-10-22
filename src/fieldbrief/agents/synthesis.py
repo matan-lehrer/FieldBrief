@@ -1,10 +1,3 @@
-"""Cross-company synthesis (ADR 0010's join step): one strong-model call
-(agents/prompts.framework_synthesis_prompt) for Five Forces, VRIO,
-positioning, the "other" SWOT sources, and recommendations — then this
-module's deterministic roll-ups (ADR 0009): Five Forces rating -> O/T,
-VRIO implication -> S/W. Finishes by assembling the full ReportJSON dict.
-"""
-
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime
@@ -20,10 +13,6 @@ from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
-# Comparison dimensions (ADR 0014): CompanySnapshot fields that are
-# researched for both target and competitors (field-checklist.md's "light
-# subset," T,C-tagged rows) — a fair, evidence-backed shared comparison,
-# not a new research pass. Order here is display order.
 COMPARISON_DIMENSIONS: list[tuple[str, str]] = [
     ("description", "What they do"),
     ("products", "Main products"),
@@ -47,10 +36,6 @@ class CompanyRef:
 
 
 def _vrio_implication(valuable: bool, rare: bool, inimitable: bool, organized: bool) -> str:
-    """ADR 0013 (superseding that one clause of ADR 0009): a valuable, rare,
-    inimitable resource the company isn't organized to capture value from is
-    a *potential*, not yet *realized*, sustained advantage — distinct enough
-    from both sustained_advantage and parity to warrant its own bucket."""
     if not valuable:
         return "competitive_disadvantage"
     if not rare:
@@ -63,9 +48,6 @@ def _vrio_implication(valuable: bool, rare: bool, inimitable: bool, organized: b
 
 
 def _build_comparison_table(companies: list[CompanyRef]) -> dict[str, Any]:
-    """Pure reshape of already-synthesized CompanySnapshot data into a
-    dimension x company grid (ADR 0014) — no new research, no new LLM call.
-    A dimension with zero companies reporting a value is dropped entirely."""
     rows = []
     for key, label in COMPARISON_DIMENSIONS:
         cells = [
@@ -167,7 +149,6 @@ async def run_synthesis(
                 threats.append(item)
             elif force.rating == "low":
                 opportunities.append(item)
-            # "medium" is shown in five_forces but omitted from SWOT (ADR 0009).
 
         for resource in result.vrio:
             claim_ids = resolve_ids(resource.source_claim_indices)
@@ -197,7 +178,6 @@ async def run_synthesis(
                 strengths.append(item)
             elif implication == "competitive_disadvantage":
                 weaknesses.append(item)
-            # "parity" is shown in vrio but omitted from SWOT (ADR 0009).
 
         if result.positioning is not None and len(companies) > 1:
             placed = []
@@ -206,7 +186,7 @@ async def run_synthesis(
                     continue
                 claim_ids = resolve_ids(placement.source_claim_indices)
                 if not claim_ids:
-                    continue  # every other roll-up loop drops unsupported items; this must too
+                    continue
                 placed.append(
                     {
                         "company_id": str(companies[placement.company_index].company_id),
@@ -215,8 +195,6 @@ async def run_synthesis(
                         "claim_ids": claim_ids,
                     }
                 )
-            # A positioning map with one company isn't a comparison — omit
-            # the whole chart rather than show something unsupported/sparse.
             if len(placed) >= 2:
                 positioning = {
                     "x_axis": {
@@ -234,9 +212,6 @@ async def run_synthesis(
                     "companies": placed,
                 }
 
-        # Non-VRIO strengths/weaknesses (shrinking margins, customer
-        # concentration, a disclosed risk) — mirrors other_opportunities/
-        # other_threats below.
         for item_draft in result.other_strengths:
             claim_ids = resolve_ids(item_draft.source_claim_indices)
             if claim_ids:
@@ -278,8 +253,6 @@ async def run_synthesis(
                     }
                 )
 
-        # swot_refs: computed by claim_id overlap, not asked of the model — it
-        # can't see the fully assembled, post-roll-up SWOT list to index into.
         swot_combined = strengths + weaknesses + opportunities + threats
         for rec in result.recommendations:
             rec_claim_ids = set(resolve_ids(rec.source_claim_indices))
@@ -291,7 +264,7 @@ async def run_synthesis(
                 if rec_claim_ids & set(swot_item["claim_ids"])
             ]
             if not swot_refs:
-                continue  # ADR 0009: a recommendation with no real swot_refs is a synthesis bug
+                continue
             recommendations.append(
                 {
                     "statement": rec.statement,
@@ -302,8 +275,6 @@ async def run_synthesis(
                 }
             )
 
-    # BMC is target-only (ADR 0010); claims carry their block tag in value.bmc_block
-    # (set at extraction time, ADR 0009's extension of the ADR 0007 convention).
     bmc_groups: dict[str, list[Claim]] = defaultdict(list)
     for claim in claims:
         if claim.company_id != target.company_id:

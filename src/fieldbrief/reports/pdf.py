@@ -1,12 +1,3 @@
-"""Report PDF: Playwright-rendered HTML->PDF with the same content as the
-web report (reports/render.py's render_pdf_html). Reports are immutable, so
-a rendered PDF never goes stale.
-
-Needs Playwright's Chromium system shared libraries installed
-(`playwright install-deps chromium`, needs root) — verified working once
-those were installed.
-"""
-
 from playwright.async_api import async_playwright
 
 

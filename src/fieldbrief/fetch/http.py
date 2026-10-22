@@ -1,8 +1,3 @@
-"""Shared HTTP plumbing: one client, per-domain rate limiting, robots.txt.
-
-design.md §9 "Fetch layer": per-domain rate limits, timeouts, robots.txt respected.
-"""
-
 import asyncio
 import time
 from urllib.parse import urlparse
@@ -16,8 +11,6 @@ MIN_INTERVAL_PER_DOMAIN_S = 1.0
 
 
 class RateLimiter:
-    """One token per domain, replenished every `min_interval_s` seconds."""
-
     def __init__(self, min_interval_s: float = MIN_INTERVAL_PER_DOMAIN_S) -> None:
         self._min_interval_s = min_interval_s
         self._last_request_at: dict[str, float] = {}
@@ -35,13 +28,6 @@ class RateLimiter:
 
 
 class RobotsCache:
-    """Caches parsed robots.txt per domain; fails open if robots.txt is unreachable.
-
-    A cached value of None means "no robots.txt found, allow everything" — kept
-    separate from RobotFileParser itself rather than using its undocumented
-    `allow_all` attribute, which typeshed doesn't declare.
-    """
-
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
         self._parsers: dict[str, RobotFileParser | None] = {}
@@ -68,8 +54,6 @@ class RobotsCache:
 
 
 class Fetcher:
-    """Fetches a URL as text, respecting robots.txt and a per-domain rate limit."""
-
     def __init__(
         self,
         user_agent: str = DEFAULT_USER_AGENT,
@@ -83,7 +67,6 @@ class Fetcher:
         self._robots = RobotsCache(self._client)
 
     async def fetch(self, url: str) -> str | None:
-        """Return the raw response body, or None if blocked, unreachable, or not HTML/text."""
         domain = urlparse(url).netloc
         if not await self._robots.allowed(url, self._user_agent):
             return None

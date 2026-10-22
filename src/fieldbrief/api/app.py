@@ -1,10 +1,3 @@
-"""FastAPI service. `POST /reports` only enqueues and returns — real work
-happens in the worker (agents/orchestrator.py via worker/app.py).
-
-Auth is a single shared API key; every request resolves to the same fixed
-user as the CLI (db/repositories.get_or_create_cli_user).
-"""
-
 import asyncio
 import json
 from collections.abc import AsyncIterator
@@ -78,8 +71,6 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def home() -> HTMLResponse:
-    """Not behind require_api_key — it's just a form; the API calls it
-    makes from the browser still need the key."""
     return HTMLResponse(render_home_html())
 
 
@@ -87,17 +78,12 @@ async def require_api_key(
     x_api_key: Annotated[str | None, Header()] = None,
     api_key: Annotated[str | None, Query()] = None,
 ) -> None:
-    """Header is the primary method; `?api_key=` is a fallback for
-    browser-native EventSource, which can't send custom headers at all —
-    `/view`'s embedded JS needs some way to authenticate its SSE call."""
     if settings.api_key not in (x_api_key, api_key):
         raise HTTPException(status_code=401, detail="invalid or missing API key")
 
 
 @app.post("/companies/resolve", response_model=CompanyOut, dependencies=[Depends(require_api_key)])
 async def resolve_company(body: ResolveRequest) -> CompanyOut:
-    """Resolves and persists the best-matching company. Returns one
-    resolved company rather than a candidate list to choose from."""
     async with httpx.AsyncClient(headers={"User-Agent": DEFAULT_USER_AGENT}) as wikidata_client:
         candidates = await search_candidates(
             wikidata_client, body.query, limit=WIKIDATA_CANDIDATE_LIMIT
@@ -127,7 +113,6 @@ async def resolve_company(body: ResolveRequest) -> CompanyOut:
 async def create_report_endpoint(
     body: CreateReportRequest, idempotency_key: Annotated[str | None, Header()] = None
 ) -> CreateReportResponse:
-    """Enqueues and returns immediately; the worker does the real work."""
     competitor_count = (
         body.competitor_count
         if body.competitor_count is not None
@@ -186,8 +171,6 @@ async def get_report_endpoint(report_id: UUID) -> ReportOut:
     dependencies=[Depends(require_api_key)],
 )
 async def refresh_report(report_id: UUID) -> CreateReportResponse:
-    """A new, separate report linked via parent_report_id — reports are
-    immutable, never mutated in place."""
     async with SessionFactory() as session:
         old_report = await get_report(session, report_id)
         if old_report is None:
@@ -195,8 +178,6 @@ async def refresh_report(report_id: UUID) -> CreateReportResponse:
         user_id = old_report.user_id
         target_company_id = old_report.target_company_id
         tier = cast(Tier, old_report.tier)
-        # competitor_count isn't stored on Report itself — read back from
-        # how many REPORT_COMPETITORS rows the original actually wrote.
         competitor_count = await count_report_competitors(session, old_report.id)
 
         new_report = await create_report(
@@ -221,10 +202,6 @@ async def refresh_report(report_id: UUID) -> CreateReportResponse:
 
 
 async def _terminal_event_from_db(report_id: UUID) -> str | None:
-    """AMQP topic exchanges don't replay to late subscribers — a worker that
-    finishes between this connection opening and the queue bind below would
-    publish into a message that's simply gone. Falling back to the Report
-    row's own status keeps a client from hanging on a "done" it missed."""
     async with SessionFactory() as session:
         report = await get_report(session, report_id)
     if report is None or report.status not in ("done", "partial", "failed"):
@@ -234,15 +211,7 @@ async def _terminal_event_from_db(report_id: UUID) -> str | None:
 
 
 async def progress_event_stream(report_id: UUID) -> AsyncIterator[str]:
-    """The SSE body. A module-level function, not a route-local closure, so
-    it can be iterated directly in tests — httpx's ASGITransport buffers an
-    entire StreamingResponse until the generator fully completes, which
-    makes it useless for testing a stream still open seconds later."""
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
-    # A plain queue, not aio_pika's own iterator: cancelling a wait on
-    # RobustQueue's iterator poisons it (next __anext__() raises, which
-    # PEP 479 turns into a RuntimeError that kills the SSE response for
-    # good). Cancelling asyncio.Queue.get() is always safe.
     local_queue: asyncio.Queue[aio_pika.abc.AbstractIncomingMessage] = asyncio.Queue()
     try:
         channel = await connection.channel()
@@ -253,7 +222,6 @@ async def progress_event_stream(report_id: UUID) -> AsyncIterator[str]:
         await queue.bind(exchange, routing_key=routing_key_for(str(report_id)))
         await queue.consume(local_queue.put)
 
-        # Bound first, so nothing published after this point is missed.
         catch_up = await _terminal_event_from_db(report_id)
         if catch_up is not None:
             yield f"data: {catch_up}\n\n"
@@ -279,8 +247,6 @@ async def progress_event_stream(report_id: UUID) -> AsyncIterator[str]:
 
 @app.get("/reports/{report_id}/events", dependencies=[Depends(require_api_key)])
 async def report_events(report_id: UUID) -> StreamingResponse:
-    """One exclusive, auto-delete queue per connection, bound to this
-    report's routing key — closes on DONE/FAILED or client disconnect."""
     return StreamingResponse(progress_event_stream(report_id), media_type="text/event-stream")
 
 
@@ -303,7 +269,6 @@ async def _render_finished_report(report_id: UUID, api_key: str | None = None) -
 
 @app.get("/history", dependencies=[Depends(require_api_key)])
 async def history(api_key: Annotated[str | None, Query()] = None) -> HTMLResponse:
-    """Just this one user's reports, newest first."""
     async with SessionFactory() as session:
         user = await get_or_create_cli_user(session)
         reports = await list_reports_for_user(session, user.id)
@@ -347,9 +312,6 @@ async def view_report(
 
 @app.get("/reports/{report_id}/pdf", dependencies=[Depends(require_api_key)])
 async def report_pdf(report_id: UUID) -> Response:
-    """Rendered on demand every time, not cached — reports are immutable, so
-    there's nothing to invalidate. Same report_json and resolved claims as
-    /view, just a print-appropriate layout."""
     async with SessionFactory() as session:
         report = await get_report(session, report_id)
         if report is None or report.status not in ("done", "partial") or report.report_json is None:

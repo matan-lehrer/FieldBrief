@@ -1,6 +1,3 @@
-"""Prompt builders for each LLM call the graph makes. Kept separate from
-nodes.py so prompt wording can change without touching call/control flow."""
-
 import uuid
 
 from fieldbrief.db.models import Claim
@@ -89,9 +86,6 @@ def verification_prompt(statement: str, snippet: str) -> list[dict[str, str]]:
     ]
 
 
-# How to frame the executive brief / audience-implications section for each
-# selected audience (ADR 0014) — steers interpretation of the SAME shared
-# evidence, never a second research pass.
 AUDIENCE_FRAMING: dict[str, str] = {
     "analyst": "a competitive analyst building a market picture — frame around what's "
     "defensible, what's uncertain, and what a careful reader should verify further",
@@ -107,18 +101,10 @@ AUDIENCE_FRAMING: dict[str, str] = {
 
 
 def framework_synthesis_prompt(
-    companies: list[tuple[uuid.UUID, str, bool]],  # (company_id, name, is_target)
+    companies: list[tuple[uuid.UUID, str, bool]],
     claims: list[Claim],
     audience: str = "analyst",
 ) -> list[dict[str, str]]:
-    """One call producing every cross-company judgment: an executive brief,
-    Five Forces, VRIO (target only — the claims list simply won't have
-    resources.advantages claims for competitors, per field_checklist's
-    target_only fields), positioning, the "other" SWOT sources (events/
-    market_size/regulation/bmc/financials/risks), recommendations, and
-    audience-tailored implications. One shared research pass feeds every
-    audience — `audience` only steers interpretation, never a second
-    research pass (ADR 0014)."""
     name_by_id = {cid: name for cid, name, _ in companies}
     numbered_companies = "\n".join(
         f"[{i}] {name} ({'target' if is_target else 'competitor'})"

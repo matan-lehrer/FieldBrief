@@ -1,5 +1,3 @@
-"""Web search via a self-hosted SearXNG instance (design.md §10 MVP stack)."""
-
 import httpx
 from pydantic import BaseModel
 

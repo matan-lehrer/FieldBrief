@@ -1,7 +1,3 @@
-"""Pydantic schemas for the LLM calls inside the agent graph — distinct from
-reports/schema.py (the report's shape). These are what the model itself
-returns; the graph nodes translate between the two."""
-
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -50,10 +46,6 @@ class ExtractedClaim(BaseModel):
 
 
 class ExtractionResult(BaseModel):
-    """One page -> zero or more claims. No claim for a field the page doesn't
-    support — inventing one is worse than leaving it out (CLAUDE.md hard
-    constraint 5)."""
-
     claims: list[ExtractedClaim] = Field(default_factory=list)
 
 
@@ -143,9 +135,6 @@ class ExecutiveFindingDraft(BaseModel):
 
 
 class AudienceImplicationsDraft(BaseModel):
-    """The model doesn't choose the audience — it's given one (ADR 0014)
-    and tailors `relevance`/assumptions/follow-ups to it."""
-
     relevance: str = Field(description="Why these findings matter specifically for this audience")
     assumptions: list[str] = Field(default_factory=list)
     follow_up_questions: list[str] = Field(default_factory=list)
@@ -153,9 +142,6 @@ class AudienceImplicationsDraft(BaseModel):
 
 
 class FrameworkSynthesisResult(BaseModel):
-    """The one strong-model call that produces every cross-company judgment
-    (design.md's cost model assumes one synthesis call, not four — ADR 0008)."""
-
     executive_brief: list[ExecutiveFindingDraft] = Field(default_factory=list)
     five_forces: list[ForceAssessmentDraft] = Field(default_factory=list)
     vrio: list[VRIOResourceDraft] = Field(default_factory=list)

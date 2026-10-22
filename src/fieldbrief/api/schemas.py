@@ -1,5 +1,3 @@
-"""Request/response models for the API (design.md §8)."""
-
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -24,7 +22,7 @@ class CompanyOut(BaseModel):
 class CreateReportRequest(BaseModel):
     company_id: UUID
     tier: Tier = "standard"
-    competitor_count: int | None = None  # None -> the tier's own default count
+    competitor_count: int | None = None
     audience: Audience = DEFAULT_AUDIENCE
 
 

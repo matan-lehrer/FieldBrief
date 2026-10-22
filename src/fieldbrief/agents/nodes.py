@@ -1,12 +1,3 @@
-"""Per-company research nodes (ADR 0010's inner, per-field fan-out level).
-Each node is `async def node(state, **deps) -> dict`, a partial state
-update; dependencies are injected by agents/graph.py via functools.partial.
-
-Cross-company judgment (Five Forces, BMC, VRIO, positioning, SWOT,
-recommendations) lives in agents/synthesis.py, after every company's
-analyze_node completes.
-"""
-
 import time
 import uuid
 from collections import defaultdict
@@ -40,15 +31,13 @@ from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.confidence import compute_citation
 
-MAX_ATTEMPTS_PER_FIELD = 2
+MAX_ATTEMPTS_PER_FIELD: dict[Tier, int] = {"quick": 1, "standard": 4, "deep": 6}
 
 FRESHNESS_MAX_AGE: dict[str, timedelta] = {
     "events.recent": timedelta(days=7),
     "financials.revenue": timedelta(days=365),
 }
 
-# Fields with no dedicated search query share the overview/domain fetch;
-# everything else gets its own targeted search when still a gap.
 SEARCH_GROUPS: list[tuple[set[str], str]] = [
     ({"events.recent"}, "{name} news"),
     ({"pricing.model"}, "{name} pricing"),
@@ -57,29 +46,22 @@ SEARCH_GROUPS: list[tuple[set[str], str]] = [
     ({"market.forces"}, "{name} industry competition analysis"),
     ({"environment.regulation"}, "{name} regulation compliance"),
 ]
-RESULTS_PER_SEARCH = 4
+RESULTS_PER_SEARCH = 6
 
-# Fields official SEC filings answer directly — tried before the generic
-# search path, persisted as source_type="filing" (confidence.py's top tier).
 EDGAR_FIELDS: set[str] = {
     "financials.revenue",
     "financials.profitability",
     "financials.funding_or_cap",
 }
 
-# Fields that fetch a second independent source in the same round rather
-# than relying on a retry round (one that only fires while the gap stays
-# open, and closes the instant a single source succeeds).
 CORROBORATE_FIELDS: set[str] = EDGAR_FIELDS | {"market.forces"}
 
-# ADR 0007's two tagged, multi-dimension fields need several distinct
-# sub-dimensions covered before the framework they feed is more than a guess.
 TAGGED_FIELD_KEY: dict[str, str] = {
     "market.forces": "force",
     "resources.advantages": "resource",
 }
 MIN_DISTINCT_TAGS: dict[str, int] = {
-    "market.forces": 3,  # of 5 possible forces
+    "market.forces": 3,
     "resources.advantages": 2,
 }
 
@@ -98,8 +80,6 @@ def _normalize_for_match(text: str) -> str:
 
 
 def _as_datetime(d: date | None) -> datetime | None:
-    """Source.published_at is a naive-UTC datetime column; metadata
-    extraction only ever gives a date, so midnight on that date it is."""
     return datetime(d.year, d.month, d.day) if d else None
 
 
@@ -108,8 +88,6 @@ def _distinct_tags(claims: list[Claim], tag_key: str) -> set[str]:
 
 
 def _field_resolved(fresh_claims: list[Claim], field: str) -> bool:
-    """A field is done once it has >=1 fresh verified claim, and — for the
-    two tagged multi-dimension fields — enough distinct tags covered."""
     verified_fresh = [c for c in fresh_claims if c.verified]
     if not verified_fresh:
         return False
@@ -158,8 +136,6 @@ async def _extract_and_store_claims(
     fields: list[str],
     claim_ids: list[str],
 ) -> None:
-    """Fetch -> extract claims -> verify each, shared by the normal
-    search-result path and the EDGAR filing path below."""
     extraction = await gateway.call(
         Task.EXTRACT,
         prompts.extraction_prompt(company_name, cleaned, fields),
@@ -169,9 +145,6 @@ async def _extract_and_store_claims(
         stage="research",
     )
     for extracted in extraction.claims:
-        # Only keep the excerpt if it's genuinely verbatim in the page — a
-        # quote that isn't actually there would be a fabricated "source
-        # quotation," not evidence.
         excerpt = extracted.excerpt
         if excerpt and _normalize_for_match(excerpt) not in _normalize_for_match(cleaned):
             excerpt = None
@@ -188,8 +161,6 @@ async def _extract_and_store_claims(
             snippet=excerpt or "",
             relevance=extracted.relevance,
         )
-        # Verification checks the statement against the full page, not the
-        # (possibly empty) stored excerpt.
         verification = await gateway.call(
             Task.VERIFY,
             prompts.verification_prompt(extracted.statement, cleaned),
@@ -216,9 +187,6 @@ async def _research_financials_via_edgar(
     fields: list[str],
     claim_ids: list[str],
 ) -> None:
-    """Official-source financials, tried before the scraped-page path for
-    companies with a CIK. Never raises — a 403/rate-limit from SEC just
-    means the normal search path below still runs."""
     try:
         filings = await get_recent_annual_filings(edgar_client, cik, limit=1)
     except httpx.HTTPError:
@@ -273,10 +241,6 @@ async def research_node(
     edgar_client: httpx.AsyncClient | None = None,
     progress: ProgressSink = _NULL_PROGRESS,
 ) -> dict[str, Any]:
-    """One research round: the overview/domain page covers most fields in
-    one extraction call; fields needing their own angle get a targeted
-    search each. Each retry round picks a different search result so
-    looping again sees new sources instead of re-fetching the same page."""
     if not state["gaps"]:
         return {}
 
@@ -306,8 +270,6 @@ async def research_node(
             claim_ids=claim_ids,
         )
 
-    # (url, search-result title or None — extract_metadata() below fills
-    # the title in from the page itself when there's no search title).
     urls: list[tuple[str, str | None]] = []
     if company_domain:
         urls.append((company_domain, None))
@@ -356,9 +318,6 @@ async def research_node(
             published_at=_as_datetime(published_date),
         )
         if not changed:
-            # Only skip re-extraction when THIS company already has fresh
-            # claims from THIS source for every field this fetch targets —
-            # "unchanged" might mean a different company fetched it last.
             covered = await get_covered_fields_from_source(
                 session,
                 company_id,
@@ -385,19 +344,17 @@ async def research_node(
     return {"claim_ids": claim_ids}
 
 
-async def gap_check_node(state: GraphState, *, session: AsyncSession) -> dict[str, Any]:
+async def gap_check_node(state: GraphState, *, session: AsyncSession, tier: Tier) -> dict[str, Any]:
     company_id = uuid.UUID(state["company_id"])
+    max_attempts = MAX_ATTEMPTS_PER_FIELD[tier]
     remaining = []
-    # Dropped from `gaps` once a field hits its attempt cap so it stops
-    # being retried, but tracked in `exhausted_gaps` so it still surfaces
-    # as a real CoverageGap instead of disappearing.
     exhausted = list(state.get("exhausted_gaps", []))
     for gap in state["gaps"]:
         fresh = await get_fresh_claims(session, company_id, gap["field"], _max_age(gap["field"]))
         if _field_resolved(fresh, gap["field"]):
-            continue  # resolved — drop from gaps
+            continue
         attempts = gap["attempts"] + 1
-        if attempts >= MAX_ATTEMPTS_PER_FIELD:
+        if attempts >= max_attempts:
             exhausted.append({"field": gap["field"], "attempts": attempts})
             continue
         remaining.append({"field": gap["field"], "attempts": attempts})
@@ -420,8 +377,6 @@ def should_continue_researching(
 
 
 async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str, Any]:
-    """Deterministic CompanySnapshot assembly — grouping already-tagged
-    claims by field is data wrangling, not judgment, so no LLM call here."""
     company_id = uuid.UUID(state["company_id"])
 
     claims_result = await session.execute(
@@ -437,8 +392,6 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
         sources_result = await session.execute(select(Source).where(Source.id.in_(source_ids)))
         sources = {s.id: s for s in sources_result.scalars().all()}
 
-    # Group by field for the "stale" check, but only fresh claims (same
-    # per-field window gap_check uses) ever reach a Citation.
     now = datetime.now(UTC).replace(tzinfo=None)
     by_field: dict[str, list[Claim]] = defaultdict(list)
     fresh_by_field: dict[str, list[Claim]] = defaultdict(list)
@@ -454,8 +407,6 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
             return None
         return compute_citation(field_claims, sources).model_dump(mode="json")
 
-    # Plain facts, not judgment calls — shown without a citation wrapper.
-    # First verified claim that supplies each half wins.
     hq: str | None = None
     founded: str | None = None
     for claim in fresh_by_field.get("profile.hq_founded", []):
@@ -464,7 +415,6 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
         if founded is None and claim.value.get("founded_year"):
             founded = str(claim.value["founded_year"])
 
-    # Wikidata facts already sitting on the Company row — no extraction needed.
     company = await session.get(Company, company_id)
     industry = company.industry if company else None
     ticker = company.ticker if company else None

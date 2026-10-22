@@ -1,14 +1,3 @@
-"""Company entity resolution via Wikidata.
-
-Property IDs used here:
-- P856  official website
-- P452  industry (value is an item; resolved to a label with a second lookup)
-- P414  stock exchange, qualified by P249 (ticker symbol) — the ticker is a
-        *qualifier* on the exchange claim, not a top-level property.
-- P5531 SEC Central Index Key (CIK) — present on SEC filers, absent on many
-        others. Missing is a legitimate "not found", not a bug.
-"""
-
 from typing import Any
 
 import httpx
@@ -16,13 +5,11 @@ from pydantic import BaseModel
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
-# P31 (instance of) values that mark a candidate as business-like, not a
-# place/person/other entity that happens to share a label (ADR 0011).
 COMPANY_LIKE_CLASSES = {
-    "Q4830453",  # business
-    "Q6881511",  # enterprise
-    "Q891723",  # public company
-    "Q783794",  # company
+    "Q4830453",
+    "Q6881511",
+    "Q891723",
+    "Q783794",
 }
 
 
@@ -45,9 +32,6 @@ class CompanyDetails(BaseModel):
 async def search_candidates(
     client: httpx.AsyncClient, query: str, limit: int = 5
 ) -> list[CompanyCandidate]:
-    """Raw name search — multiple unrelated entities can share a label (ADR 0011's
-    Wix/Wiz case), so this returns candidates for the caller/user to disambiguate,
-    not a single resolved answer."""
     response = await client.get(
         WIKIDATA_API,
         params={
@@ -70,9 +54,6 @@ async def search_candidates(
 async def pick_company_like(
     client: httpx.AsyncClient, candidates: list[CompanyCandidate]
 ) -> CompanyCandidate | None:
-    """Among name-search candidates, prefer one whose P31 (instance of) marks it
-    as a business — plain label ranking alone can't tell a company from a village,
-    a surname, or anything else that happens to share its name (ADR 0011)."""
     if not candidates:
         return None
     ids = "|".join(c.qid for c in candidates)
@@ -92,8 +73,6 @@ async def pick_company_like(
 
 
 async def get_company_details(client: httpx.AsyncClient, qid: str) -> CompanyDetails:
-    """Fetch aliases + the handful of claims the field checklist needs. Any field
-    this entity doesn't have is left None — a legitimate "not found", not an error."""
     response = await client.get(
         WIKIDATA_API,
         params={
