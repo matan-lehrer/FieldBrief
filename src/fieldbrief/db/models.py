@@ -114,12 +114,17 @@ class Report(Base):
     status: Mapped[str] = mapped_column(ReportStatus, default="queued")
     report_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cost_usd: Mapped[float | None] = mapped_column(Numeric)
+    idempotency_key: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     completed_at: Mapped[datetime | None]
 
     __table_args__ = (
         Index("ix_reports_user_created", "user_id", "created_at"),
         Index("ix_reports_target_created", "target_company_id", "created_at"),
+        # Scoped per-user (design.md §8: "POST /reports accepts an
+        # Idempotency-Key header") — two users may coincidentally reuse the
+        # same key string without colliding.
+        Index("ux_reports_user_idempotency_key", "user_id", "idempotency_key", unique=True),
     )
 
 

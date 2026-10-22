@@ -35,11 +35,11 @@ Competitor discovery + graph, parallel fan-out, cache reuse, Five Forces, BMC, V
 Golden-set harness: claim precision, citation validity, cost, latency. Tune to the NFRs.
 **Done when:** an eval results table is committed. Harness built (`evals/harness.py`, 6 unit tests) and all 10 golden-set files researched and committed (`evals/golden/*.yaml`, ADR 0011) — not yet run for real (needs `LLM_API_KEY`); no results table committed yet.
 
-## 6. Service layer  ← current
+## 6. Service layer
 FastAPI endpoints, RabbitMQ queue + FastStream worker, LangGraph checkpointing, SSE progress, nginx, idempotency keys.
-**Done when:** the same report runs through the API with live progress.
+**Done when:** the same report runs through the API with live progress. ✅ Verified 2026-10-22 end to end against real Postgres + real RabbitMQ (network/LLM mocked): `POST /companies/resolve` -> `POST /reports` (enqueues, worker picks it up) -> `GET /reports/{id}/events` SSE stream reaches a terminal state -> `GET /reports/{id}` shows the finished report. Idempotency keys verified (same key -> same report, no duplicate). Found and fixed a real race during testing: a topic-exchange publish-before-subscribe can drop a progress event for good — `events` now falls back to the `Report` row's own status so a client can't hang (design.md §8 implementation notes). nginx config written but not yet wired into compose (no Dockerfile for the API/worker yet — they run via `uv run`, not as containers); LangGraph Postgres checkpointing (worker-crash resumability) deliberately deferred, not silently dropped — not needed for a single-worker MVP and no crash-recovery test exists yet to prove it.
 
-## 7. Report UI and PDF
+## 7. Report UI and PDF  ← current
 Jinja2 + HTMX pages, progressive sections, Playwright PDF.
 **Done when:** README-ready screenshots.
 

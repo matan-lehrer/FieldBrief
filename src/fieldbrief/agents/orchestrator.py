@@ -15,6 +15,7 @@ from fieldbrief.agents.competitors import discover_competitors
 from fieldbrief.agents.field_checklist import Tier
 from fieldbrief.agents.graph import build_company_research_graph
 from fieldbrief.agents.nodes import MAX_ATTEMPTS_PER_FIELD
+from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.agents.synthesis import CompanyRef, run_synthesis
 from fieldbrief.db.models import Company
@@ -29,6 +30,8 @@ from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
+
+_NULL_PROGRESS = NullProgressSink()
 
 
 async def _resolve_competitor(
@@ -107,9 +110,11 @@ async def run_report(
     target_company: Company,
     tier: Tier,
     competitor_count: int,
+    progress: ProgressSink = _NULL_PROGRESS,
 ) -> dict[str, Any]:
     competitors: list[Company] = []
     if competitor_count > 0:
+        await progress.emit(Stage.DISCOVERING, f"Finding up to {competitor_count} competitors")
         candidates = await discover_competitors(
             target_company.name,
             http_client=http_client,
@@ -133,6 +138,7 @@ async def run_report(
         await session.commit()
 
     companies = [target_company, *competitors]
+    await progress.emit(Stage.RESEARCHING, f"Researching {len(companies)} companies")
     results = await asyncio.gather(
         *(
             _research_company(
@@ -149,6 +155,8 @@ async def run_report(
             for company in companies
         )
     )
+
+    await progress.emit(Stage.ANALYZING, "Building company profiles from research")
 
     company_refs = []
     for company, result in zip(companies, results, strict=True):
@@ -176,6 +184,7 @@ async def run_report(
         for gap in result["gaps"]
     ]
 
+    await progress.emit(Stage.SYNTHESIZING, "Running frameworks and SWOT")
     report_json = await run_synthesis(
         session=session,
         gateway=gateway,
@@ -201,4 +210,5 @@ async def run_report(
         await add_report_competitors(session, report_id, [c.id for c in competitors])
     await session.commit()
 
+    await progress.emit(Stage.DONE, f"Report {status}")
     return report_json

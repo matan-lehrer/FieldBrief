@@ -186,14 +186,39 @@ async def get_fresh_claims(
 
 
 async def create_report(
-    session: AsyncSession, user_id: uuid.UUID, target_company_id: uuid.UUID, tier: str
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    target_company_id: uuid.UUID,
+    tier: str,
+    status: str = "running",
+    idempotency_key: str | None = None,
 ) -> Report:
+    """`status` defaults to "running" — the CLI calls this immediately before
+    starting the graph synchronously. The API passes status="queued" instead:
+    the job hasn't started until a worker picks it up (design.md §8)."""
     report = Report(
-        user_id=user_id, target_company_id=target_company_id, tier=tier, status="running"
+        user_id=user_id,
+        target_company_id=target_company_id,
+        tier=tier,
+        status=status,
+        idempotency_key=idempotency_key,
     )
     session.add(report)
     await session.flush()
     return report
+
+
+async def get_report_by_idempotency_key(
+    session: AsyncSession, user_id: uuid.UUID, idempotency_key: str
+) -> Report | None:
+    result = await session.execute(
+        select(Report).where(Report.user_id == user_id, Report.idempotency_key == idempotency_key)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_report(session: AsyncSession, report_id: uuid.UUID) -> Report | None:
+    return await session.get(Report, report_id)
 
 
 async def save_report(
