@@ -585,6 +585,8 @@ RabbitMQ cluster or SQS for the queue · in-memory cache layer for hot research 
 | Run | docker compose | One command |
 | Optional | Ollama | Local extraction models to cut cost |
 
+**MVP status note (2026-10-22):** everything above is the final design; not every row is wired in yet, and the gaps are deliberate deferrals, not reversed decisions (none need a new ADR). Not yet implemented: nginx (API/worker run via `uv run`, not containers — no Dockerfile for them yet), the LangGraph Postgres checkpointer (not needed for a single-worker MVP), and Langfuse (cost/latency is already captured per-report via `cost_usd` on the `Report` row; the three `langfuse_*` settings in `config.py` are unused placeholders). See `docs/roadmap.md` stage 6/8 for the reasoning on each.
+
 ---
 
 ## 13. Planned repo layout

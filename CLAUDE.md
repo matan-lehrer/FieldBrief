@@ -4,7 +4,7 @@ AI-powered competitive analysis, built on real strategy frameworks. A company na
 
 Portfolio project by Matan Lehrer (backend/AI engineer, MBA). Target bar: senior to staff level.
 
-**Current stage:** 7 — Report UI and PDF (built and tested, but its literal "done when" — a screenshot — isn't met yet: no browser/Chromium available in this dev environment to capture one). See `docs/roadmap.md`. Stages 0-6 are built and tested (the agent pipeline itself not yet run against a real LLM — needs `LLM_API_KEY`); design decisions live in `docs/design.md` and `docs/adr/`.
+**Current stage:** 8 — Polish and ship (refresh endpoint, README, design/ADR consistency pass all built and tested). See `docs/roadmap.md`. Stages 0-8 are built and tested; the one thing not yet done is running the agent pipeline against a real LLM (needs `LLM_API_KEY`) and taking the stage 7/8 screenshot that depends on it — no browser/Chromium available in this dev environment. Design decisions live in `docs/design.md` and `docs/adr/`.
 
 ## Read first
 - `docs/design.md` — requirements, NFRs, entities, tables, API, data flow, architecture. Source of truth.
