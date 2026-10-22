@@ -25,6 +25,7 @@
   .field { margin: 11px 0; }
   .field-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
   .citation { font-size: 13.5px; margin-top: 3px; }
+  .citation .badge { margin-right: 6px; }
   .confidence { color: var(--muted); font-size: 11px; }
   .sources { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
   .sources a { color: inherit; }
@@ -33,9 +34,9 @@
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 11px;
     font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
-  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low { background: var(--good-soft); color: var(--good); }
-  .badge.medium, .badge.parity, .badge.priority-medium { background: var(--warn-soft); color: var(--warn); }
-  .badge.high, .badge.competitive_disadvantage, .badge.priority-high { background: var(--bad-soft); color: var(--bad); }
+  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low, .badge.trust-high { background: var(--good-soft); color: var(--good); }
+  .badge.medium, .badge.parity, .badge.priority-medium, .badge.trust-medium { background: var(--warn-soft); color: var(--warn); }
+  .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.trust-low { background: var(--bad-soft); color: var(--bad); }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
   th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
@@ -80,6 +81,9 @@
 {% macro citation(c) %}
   {% if c %}
     <div class="citation">
+      {% if c.confidence.score >= 0.8 %}<span class="badge trust-high">high trust</span>
+      {% elif c.confidence.score >= 0.5 %}<span class="badge trust-medium">medium trust</span>
+      {% else %}<span class="badge trust-low">low trust</span>{% endif %}
       <span class="confidence">{{ "%.0f"|format(c.confidence.score * 100) }}% confidence{% if c.confidence.verified %} · verified{% endif %} · {{ c.confidence.corroboration }} source{{ "s" if c.confidence.corroboration != 1 else "" }}</span>
       <ul class="sources">
         {% for cid in c.claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}
@@ -113,6 +117,9 @@
   <div class="card {{ 'target' if c.is_target else '' }}">
     <h3>{{ c.name }}{% if c.is_target %} (target){% endif %}</h3>
     <div class="field"><span class="field-label">Description</span>{{ citation(c.description) }}</div>
+    {% if c.industry or c.ticker %}
+    <div class="field"><span class="field-label">Industry</span> {{ c.industry or "—" }}{% if c.ticker %} · {{ c.ticker }}{% endif %}</div>
+    {% endif %}
     {% if c.hq or c.founded %}
     <div class="field"><span class="field-label">HQ / Founded</span> {{ c.hq or "—" }}{% if c.founded %}, {{ c.founded }}{% endif %}</div>
     {% endif %}
@@ -128,7 +135,7 @@
     {% if c.is_target and c.recent_events %}
     <div class="field"><span class="field-label">Recent events</span>{{ citation(c.recent_events) }}</div>
     {% endif %}
-    {% if not (c.hq or c.founded or c.employees or c.products or c.customer_segments or c.revenue_model or c.revenue or c.profitability or c.funding_or_cap or c.recent_events) %}
+    {% if not (c.industry or c.ticker or c.hq or c.founded or c.employees or c.products or c.customer_segments or c.revenue_model or c.revenue or c.profitability or c.funding_or_cap or c.recent_events) %}
     <p class="gap">No further details found — see "Not found" below.</p>
     {% endif %}
   </div>

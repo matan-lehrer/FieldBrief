@@ -44,6 +44,7 @@ def build_company_research_graph(
     http_client: httpx.AsyncClient,
     searxng_url: str,
     tier: Tier,
+    edgar_client: httpx.AsyncClient | None = None,
     progress: ProgressSink = _NULL_PROGRESS,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
     graph = StateGraph(GraphState)
@@ -59,6 +60,7 @@ def build_company_research_graph(
             fetcher=fetcher,
             http_client=http_client,
             searxng_url=searxng_url,
+            edgar_client=edgar_client,
             progress=progress,
         ),
     )

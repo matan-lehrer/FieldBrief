@@ -61,6 +61,7 @@ async def handle_report_job(job: ReportJob) -> None:
         fetcher = Fetcher()
         http_client = httpx.AsyncClient()
         wikidata_client = httpx.AsyncClient(headers={"User-Agent": DEFAULT_USER_AGENT})
+        edgar_client = httpx.AsyncClient(headers={"User-Agent": settings.sec_user_agent})
 
         try:
             await run_report(
@@ -76,6 +77,7 @@ async def handle_report_job(job: ReportJob) -> None:
                 tier=cast(Tier, report.tier),
                 competitor_count=job.competitor_count,
                 progress=progress,
+                edgar_client=edgar_client,
             )
         except Exception as exc:
             logger.exception("report_job_failed", extra={"report_id": job.report_id})
@@ -88,3 +90,4 @@ async def handle_report_job(job: ReportJob) -> None:
             await fetcher.aclose()
             await http_client.aclose()
             await wikidata_client.aclose()
+            await edgar_client.aclose()

@@ -7,7 +7,10 @@ from fieldbrief.db.models import Claim
 
 FIELD_DESCRIPTIONS: dict[str, str] = {
     "profile.description": "What the company does, in a sentence or two",
-    "profile.hq_founded": "Headquarters location and founding year",
+    "profile.hq_founded": (
+        "Headquarters location and founding year — tag via value.hq (city, country) "
+        "and value.founded_year (integer), whichever the page supports"
+    ),
     "profile.employees": "Approximate headcount",
     "offering.products": "Main products or services offered",
     "customers.segments": "Who buys from this company (customer segments)",

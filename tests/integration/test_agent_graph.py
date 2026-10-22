@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+import respx
 from sqlalchemy import delete, select
 
 from fieldbrief.agents.competitors import CompetitorCandidate, CompetitorDiscoveryResult
@@ -23,7 +24,7 @@ from fieldbrief.agents.llm_schemas import (
     ExtractionResult,
     FrameworkSynthesisResult,
 )
-from fieldbrief.agents.nodes import research_node
+from fieldbrief.agents.nodes import analyze_node, research_node
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.db.models import (
     Claim,
@@ -36,6 +37,7 @@ from fieldbrief.db.models import (
 )
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
 from fieldbrief.db.session import SessionFactory, engine
+from fieldbrief.fetch.edgar import SUBMISSIONS_URL
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import SearchResult
 from fieldbrief.llm.budget import Budget
@@ -545,3 +547,380 @@ async def test_research_node_verifies_claims_from_anywhere_on_the_page() -> None
                 )
             await cleanup_session.commit()
         await engine.dispose()
+
+
+async def _cleanup_company(company_id: uuid.UUID, report_id: uuid.UUID | None) -> None:
+    async with SessionFactory() as cleanup_session:
+        claims_result = await cleanup_session.execute(
+            select(Claim.source_id).where(Claim.company_id == company_id)
+        )
+        source_ids = {row[0] for row in claims_result.all()}
+        await cleanup_session.execute(delete(Claim).where(Claim.company_id == company_id))
+        if source_ids:
+            await cleanup_session.execute(delete(Source).where(Source.id.in_(source_ids)))
+        if report_id is not None:
+            await cleanup_session.execute(delete(Report).where(Report.id == report_id))
+        await cleanup_session.execute(delete(Company).where(Company.id == company_id))
+        await cleanup_session.commit()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_hq_founded_and_employees_reach_the_snapshot() -> None:
+    """profile.hq_founded and profile.employees were extracted and verified
+    like any other claim, but analyze_node never read them into the
+    snapshot (no citation_for() call for either field) — report.html's
+    {% if c.hq %} / {% if c.employees %} markup was always rendering against
+    None. A real dropped-field bug, not a design decision."""
+
+    async def fake_fetch_overview(self: Fetcher, url: str) -> str:
+        return _page("HQ_TEST_OVERVIEW_PAGE")
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        if schema is ExtractionResult:
+            result = ExtractionResult(
+                claims=[
+                    {
+                        "field": "profile.hq_founded",
+                        "statement": "Headquartered in New York, founded 2005.",
+                        "value": {"hq": "New York, USA", "founded_year": 2005},
+                        "relevance": 0.9,
+                    },
+                    {
+                        "field": "profile.employees",
+                        "statement": "About 200 employees.",
+                        "relevance": 0.9,
+                    },
+                ]
+            )
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            return _fake_llm_response(
+                ClaimVerification(verified=True, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://hq-test-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="HQ Test Co", domain=domain)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_overview),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                base_state = {
+                    "report_id": str(report.id),
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "company_domain": domain,
+                    "company_cik": None,
+                    "is_target": True,
+                    "tier": "quick",
+                    "claim_ids": [],
+                    "company_snapshot": None,
+                }
+                research_result = await research_node(
+                    {
+                        **base_state,
+                        "retry_round": 0,
+                        "gaps": [
+                            {"field": "profile.hq_founded", "attempts": 0},
+                            {"field": "profile.employees", "attempts": 0},
+                        ],
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert len(research_result["claim_ids"]) == 2
+
+            analyze_result = await analyze_node(
+                {
+                    **base_state,
+                    "retry_round": 1,
+                    "gaps": [],
+                    "claim_ids": research_result["claim_ids"],
+                },
+                session=session,
+            )
+            snapshot = analyze_result["company_snapshot"]
+            assert snapshot["hq"] == "New York, USA"
+            assert snapshot["founded"] == "2005"
+            assert snapshot["employees"] is not None
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_research_node_sources_financials_from_edgar_when_cik_present() -> None:
+    """A company with a CIK gets financials claims from its real SEC filing
+    (source_type="filing", reports/confidence.py's highest reliability tier)
+    instead of only scraped news/blog text — fetch/edgar.py existed and was
+    tested but was never actually called from research_node before this."""
+    cik = "1576789"
+    document_url = "https://www.sec.gov/Archives/edgar/data/1576789/000162828026015222/filing.htm"
+    respx.get(SUBMISSIONS_URL.format(cik=int(cik))).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "filings": {
+                    "recent": {
+                        "form": ["20-F"],
+                        "filingDate": ["2026-03-05"],
+                        "accessionNumber": ["0001628280-26-015222"],
+                        "primaryDocument": ["filing.htm"],
+                    }
+                }
+            },
+        )
+    )
+    respx.get(document_url).mock(
+        return_value=httpx.Response(200, text=_page("EDGAR_FILING_MARKER"))
+    )
+
+    async def fake_fetch_empty(self: Fetcher, url: str) -> None:
+        return None  # the scraped-page path contributes nothing in this test
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        if schema is ExtractionResult:
+            result = ExtractionResult(
+                claims=[
+                    {
+                        "field": "financials.revenue",
+                        "statement": "Reported $500M revenue in the filing.",
+                        "relevance": 0.9,
+                    }
+                ]
+            )
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            return _fake_llm_response(
+                ClaimVerification(verified=True, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://edgar-test-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(
+                session, name="Edgar Test Co", domain=domain, cik=cik
+            )
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+            edgar_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_empty),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                result = await research_node(
+                    {
+                        "report_id": str(report.id),
+                        "company_id": str(company.id),
+                        "company_name": company.name,
+                        "company_domain": domain,
+                        "company_cik": cik,
+                        "is_target": True,
+                        "tier": "quick",
+                        "retry_round": 0,
+                        "gaps": [{"field": "financials.revenue", "attempts": 0}],
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                    edgar_client=edgar_client,
+                )
+            await http_client.aclose()
+            await edgar_client.aclose()
+            await fetcher.aclose()
+
+            assert len(result["claim_ids"]) == 1
+            claim = await session.get(Claim, uuid.UUID(result["claim_ids"][0]))
+            assert claim is not None
+            source = await session.get(Source, claim.source_id)
+            assert source is not None
+            assert source.source_type == "filing"
+            assert source.url == document_url
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
+@pytest.mark.asyncio
+async def test_research_node_fetches_two_sources_for_corroboration_fields() -> None:
+    """financials/market.forces fields feed "predictions" directly, so a
+    second independent source is fetched in the SAME round instead of
+    relying on a retry round that only fires while the gap stays open — one
+    successful source used to close the gap immediately, so the
+    corroboration bonus in reports/confidence.py was effectively dead code."""
+    run_id = uuid4().hex[:8]
+    overview_url = f"https://corrob-overview-{run_id}.example.com/"
+    fund1_url = f"https://corrob-fund-{run_id}.example.com/one"
+    fund2_url = f"https://corrob-fund-{run_id}.example.com/two"
+
+    async def fake_search_funding(
+        client: object, searxng_url: str, query: str, limit: int = 10
+    ) -> list[SearchResult]:
+        return [
+            SearchResult(title="one", url=fund1_url, snippet=None),
+            SearchResult(title="two", url=fund2_url, snippet=None),
+        ]
+
+    async def fake_fetch_by_url(self: Fetcher, url: str) -> str | None:
+        if url == overview_url:
+            return _page("CORROB_OVERVIEW_PAGE")
+        if url == fund1_url:
+            return _page("CORROB_FUND_ONE")
+        if url == fund2_url:
+            return _page("CORROB_FUND_TWO")
+        return None
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        messages = kwargs["messages"]
+        page_text = messages[-1]["content"]
+        if schema is ExtractionResult:
+            if "CORROB_FUND_ONE" in page_text:
+                result = ExtractionResult(
+                    claims=[
+                        {
+                            "field": "financials.funding_or_cap",
+                            "statement": "Raised $10M Series A.",
+                            "relevance": 0.9,
+                        }
+                    ]
+                )
+            elif "CORROB_FUND_TWO" in page_text:
+                result = ExtractionResult(
+                    claims=[
+                        {
+                            "field": "financials.funding_or_cap",
+                            "statement": "Reported $12M total funding.",
+                            "relevance": 0.9,
+                        }
+                    ]
+                )
+            else:
+                result = ExtractionResult(claims=[])
+            return _fake_llm_response(result.model_dump_json())
+        if schema is ClaimVerification:
+            return _fake_llm_response(
+                ClaimVerification(verified=True, reason="checked").model_dump_json()
+            )
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company = await get_or_create_company(session, name="Corrob Co", domain=overview_url)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="standard"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_by_url),
+                patch("fieldbrief.agents.nodes.search", new=fake_search_funding),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                base_state = {
+                    "report_id": str(report.id),
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "company_domain": overview_url,
+                    "company_cik": None,
+                    "is_target": True,
+                    "tier": "standard",
+                    "claim_ids": [],
+                    "company_snapshot": None,
+                }
+                result = await research_node(
+                    {
+                        **base_state,
+                        "retry_round": 0,
+                        "gaps": [{"field": "financials.funding_or_cap", "attempts": 0}],
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert len(result["claim_ids"]) == 2
+
+            analyze_result = await analyze_node(
+                {**base_state, "retry_round": 1, "gaps": [], "claim_ids": result["claim_ids"]},
+                session=session,
+            )
+            citation = analyze_result["company_snapshot"]["funding_or_cap"]
+            assert citation["confidence"]["corroboration"] == 2
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
