@@ -41,7 +41,7 @@ async def _resolve_competitor(
         return None
     best = await pick_company_like(wikidata_client, candidates)
     if best is None:
-        return None
+        return await get_or_create_company(session, name=name)
     details = await get_company_details(wikidata_client, best.qid)
     return await get_or_create_company(
         session,
