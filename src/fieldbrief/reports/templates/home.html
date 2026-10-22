@@ -47,8 +47,8 @@
 </head>
 <body>
 <div class="topbar">
-  <div class="wordmark">Field<span class="dot">Brief</span></div>
-  <div class="topbar-right">Framework-based competitive analysis</div>
+  <div class="wordmark"><svg class="logo-mark" width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="16" cy="16" r="3.5" fill="currentColor"/><path d="M16 1v6M16 25v6M1 16h6M25 16h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>Field<span class="dot">Brief</span></div>
+  <div class="topbar-right"><a href="#" id="history-link">History</a></div>
 </div>
 
 <div class="wrap">
@@ -124,10 +124,17 @@
   const submitLabel = document.getElementById("submit-label");
   const submitStatus = document.getElementById("submit-status");
 
+  let savedKey = "";
   try {
-    const savedKey = localStorage.getItem("fieldbrief_api_key");
+    savedKey = localStorage.getItem("fieldbrief_api_key") || "";
     if (savedKey) keyInput.value = savedKey;
   } catch (e) { /* private browsing / storage blocked — fine, just won't persist */ }
+
+  document.getElementById("history-link").addEventListener("click", function (e) {
+    e.preventDefault();
+    const key = keyInput.value.trim() || savedKey || "change-me";
+    location.href = "/history?api_key=" + encodeURIComponent(key);
+  });
 
   function setLoading(loading, status) {
     submitBtn.disabled = loading;

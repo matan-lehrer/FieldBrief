@@ -21,6 +21,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from faststream.rabbit import RabbitBroker
+from sqlalchemy import select
 
 from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT, Tier
 from fieldbrief.agents.progress import PROGRESS_EXCHANGE, Stage, routing_key_for
@@ -40,6 +41,7 @@ from fieldbrief.db.repositories import (
     get_or_create_company,
     get_report,
     get_report_by_idempotency_key,
+    list_reports_for_user,
 )
 from fieldbrief.db.session import SessionFactory
 from fieldbrief.fetch.http import DEFAULT_USER_AGENT
@@ -49,6 +51,7 @@ from fieldbrief.reports.render import (
     build_claims_map,
     collect_claim_ids,
     render_failed_html,
+    render_history_html,
     render_home_html,
     render_pdf_html,
     render_progress_html,
@@ -313,6 +316,33 @@ async def _render_finished_report(report_id: UUID, api_key: str | None = None) -
             report_id,
             api_key,
         )
+
+
+@app.get("/history", dependencies=[Depends(require_api_key)])
+async def history(api_key: Annotated[str | None, Query()] = None) -> HTMLResponse:
+    """Single-user MVP (design.md) — "your reports" is just this one user's
+    reports, newest first, via the existing ix_reports_user_created index."""
+    async with SessionFactory() as session:
+        user = await get_or_create_cli_user(session)
+        reports = await list_reports_for_user(session, user.id)
+        company_ids = {r.target_company_id for r in reports}
+        companies: dict[UUID, Company] = {}
+        if company_ids:
+            result = await session.execute(select(Company).where(Company.id.in_(company_ids)))
+            companies = {c.id: c for c in result.scalars().all()}
+        rows = [
+            {
+                "report_id": r.id,
+                "company_name": companies[r.target_company_id].name
+                if r.target_company_id in companies
+                else "Unknown",
+                "tier": r.tier,
+                "status": r.status,
+                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M"),
+            }
+            for r in reports
+        ]
+    return HTMLResponse(render_history_html(rows, api_key))
 
 
 @app.get("/reports/{report_id}/view", dependencies=[Depends(require_api_key)])
