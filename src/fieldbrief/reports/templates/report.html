@@ -69,15 +69,6 @@
   .chart.in-view .point-label { opacity: 1; }
   .gaps-list { font-size: 13px; color: var(--muted); }
 
-  /* Sticky in-page nav (structure: "what's on this page, jump there") */
-  .section-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; overflow-x: auto;
-    padding: 10px 0; margin: 4px 0 0; background: var(--bg); border-bottom: 1px solid transparent; }
-  .section-nav.docked { border-bottom-color: var(--line); }
-  .section-nav .nav-link { flex: none; font-size: 12.5px; font-weight: 600; color: var(--muted);
-    padding: 6px 12px; border-radius: 999px; white-space: nowrap; transition: color .15s, background .15s; }
-  .section-nav .nav-link:hover { color: var(--ink); text-decoration: none; }
-  .section-nav .nav-link.active { color: var(--accent); background: var(--accent-soft); }
-
   /* Sources: a small trigger instead of an always-visible list — hover,
      click, or keyboard focus reveal it; nothing else on the page changes. */
   .src-pop { position: relative; display: inline-flex; }
@@ -101,7 +92,7 @@
     .reveal, .chart .point, .chart .point-label, .chart .axis-label { transition: none !important; opacity: 1 !important; transform: none !important; }
   }
   @media print {
-    .topbar, .report-actions, .section-nav { display: none; }
+    .topbar, .report-actions { display: none; }
     body { padding: 0; }
     .page { max-width: none; }
     .reveal, .chart .point, .chart .point-label, .chart .axis-label { opacity: 1 !important; transform: none !important; }
@@ -129,8 +120,7 @@
       <ul>
         {% for cl in items %}
         <li>
-          {% if cl.excerpt %}&ldquo;{{ cl.excerpt }}&rdquo; — {% endif %}
-          <a href="{{ cl.source_url }}" target="_blank" rel="noopener">{{ cl.publisher }}</a>{% if cl.published_at %}, {{ cl.published_at }}{% endif %}
+          <a href="{{ cl.source_url }}" target="_blank" rel="noopener">{{ cl.publisher }}</a>{% if cl.published_at %} · {{ cl.published_at }}{% endif %}
         </li>
         {% endfor %}
       </ul>
@@ -159,20 +149,6 @@
     generated {{ report.meta.generated_at }}
   </div>
 </div>
-
-<nav class="section-nav" id="section-nav">
-  {% if report.executive_brief %}<a href="#brief" class="nav-link">Brief</a>{% endif %}
-  <a href="#snapshot" class="nav-link">Snapshot</a>
-  {% if report.five_forces.forces %}<a href="#five-forces" class="nav-link">Five Forces</a>{% endif %}
-  {% if report.bmc.blocks %}<a href="#bmc" class="nav-link">Business Model</a>{% endif %}
-  {% if report.vrio %}<a href="#vrio" class="nav-link">VRIO</a>{% endif %}
-  {% if report.positioning.companies %}<a href="#positioning" class="nav-link">Positioning</a>{% endif %}
-  {% if report.comparison.rows %}<a href="#comparison" class="nav-link">Comparison</a>{% endif %}
-  <a href="#swot" class="nav-link">SWOT</a>
-  <a href="#recommendations" class="nav-link">Recommendations</a>
-  {% if report.audience_implications %}<a href="#implications" class="nav-link">Implications</a>{% endif %}
-  {% if report.gaps %}<a href="#gaps" class="nav-link">Not found</a>{% endif %}
-</nav>
 
 {% if report.executive_brief %}
 <section id="brief">
@@ -372,23 +348,6 @@
 </div>
 <script>
 (function () {
-  var navLinks = Array.prototype.slice.call(document.querySelectorAll(".section-nav .nav-link"));
-  var sections = navLinks
-    .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
-    .filter(Boolean);
-
-  function setActive(id) {
-    navLinks.forEach(function (a) {
-      a.classList.toggle("active", a.getAttribute("href") === "#" + id);
-    });
-  }
-  if (sections.length) setActive(sections[0].id);
-
-  var nav = document.getElementById("section-nav");
-  window.addEventListener("scroll", function () {
-    if (nav) nav.classList.toggle("docked", nav.getBoundingClientRect().top <= 0);
-  }, { passive: true });
-
   if (!("IntersectionObserver" in window)) {
     document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in-view"); });
     return;
@@ -403,13 +362,6 @@
     });
   }, { threshold: 0.12 });
   document.querySelectorAll(".reveal").forEach(function (el) { revealObserver.observe(el); });
-
-  var spyObserver = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) setActive(entry.target.id);
-    });
-  }, { rootMargin: "-45% 0px -50% 0px" });
-  sections.forEach(function (el) { spyObserver.observe(el); });
 })();
 </script>
 </body>
