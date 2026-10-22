@@ -20,6 +20,7 @@ from fieldbrief.agents.nodes import analyze_node, plan_node
 from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.agents.synthesis import CompanyRef, run_synthesis
+from fieldbrief.consts import WIKIDATA_CANDIDATE_LIMIT
 from fieldbrief.db.models import Claim, Company
 from fieldbrief.db.repositories import (
     add_report_competitors,
@@ -28,9 +29,10 @@ from fieldbrief.db.repositories import (
     upsert_competitor_relationship,
 )
 from fieldbrief.db.session import SessionFactory
+from fieldbrief.exceptions import BudgetExceededError
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
-from fieldbrief.llm.budget import Budget, BudgetExceededError
+from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
@@ -40,7 +42,7 @@ _NULL_PROGRESS = NullProgressSink()
 async def _resolve_competitor(
     name: str, *, wikidata_client: httpx.AsyncClient, session: AsyncSession
 ) -> Company | None:
-    candidates = await search_candidates(wikidata_client, name, limit=5)
+    candidates = await search_candidates(wikidata_client, name, limit=WIKIDATA_CANDIDATE_LIMIT)
     if not candidates:
         return None
     best = await pick_company_like(wikidata_client, candidates) or candidates[0]
@@ -72,10 +74,9 @@ async def _research_company(
     deadline: float | None = None,
 ) -> dict[str, Any]:
     """Its own session, not the caller's — this runs concurrently with every
-    other company's research (asyncio.gather below), and AsyncSession isn't
-    safe for concurrent use. Commits at the end: a company's claims are
-    shared, durable research (ADR 0004) independent of whether the report
-    they were gathered for succeeds."""
+    other company's research and AsyncSession isn't safe for concurrent use.
+    Commits at the end: a company's claims are shared, durable research
+    (ADR 0004) independent of whether the report itself succeeds."""
     async with SessionFactory() as session:
         graph = build_company_research_graph(
             session=session,
@@ -106,11 +107,9 @@ async def _research_company(
         try:
             result = await graph.ainvoke(initial)
         except BudgetExceededError:
-            # The report's $ budget ran out mid-research. Claims already
-            # extracted are durable, shared research (ADR 0004) regardless
-            # of how the graph run ended — build this company's snapshot
-            # from whatever made it in, rather than crashing the whole
-            # report (CLAUDE.md hard constraint 5: partial, never failed).
+            # Budget ran out mid-research. Build this company's snapshot
+            # from whatever claims made it in rather than crashing the
+            # whole report (partial, never failed).
             await progress.emit(
                 Stage.RESEARCHING, f"{company.name}: budget exhausted, using research so far"
             )
@@ -229,12 +228,9 @@ async def run_report(
             "company_id": result["company_id"],
             "field": gap["field"],
             "attempts": gap["attempts"],
-            # "budget_cutoff" means an actual $ or time cutoff ended
-            # research early (result["hit_budget_cutoff"], set above);
-            # every other remaining gap tried its allotted attempts/rounds
-            # within budget and is an honest "not_found" — attempts count
-            # alone used to drive this and mislabeled normal round-cap
-            # exhaustion (e.g. every quick-tier gap) as a budget cutoff.
+            # Only an actual $ or time cutoff (hit_budget_cutoff) counts as
+            # "budget_cutoff"; a gap that ran its full attempts within
+            # budget is an honest "not_found".
             "reason": "budget_cutoff" if result.get("hit_budget_cutoff") else "not_found",
         }
         for result in results

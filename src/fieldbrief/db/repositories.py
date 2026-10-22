@@ -1,9 +1,5 @@
-"""Repository functions over the 8 tables (design.md §4).
-
-Thin wrappers, not a full repository-pattern abstraction (CLAUDE.md: no
-speculative abstractions) — just the handful of operations stage 3's graph
-needs: dedup companies/sources, append claims, create/save a report.
-"""
+"""Repository functions over the DB tables: dedup companies/sources,
+append claims, create/save a report."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -13,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fieldbrief.consts import DEFAULT_FRESHNESS_MAX_AGE
 from fieldbrief.db.models import (
     Claim,
     Company,
@@ -33,8 +30,7 @@ def _utcnow() -> datetime:
 
 
 async def get_or_create_cli_user(session: AsyncSession) -> User:
-    """The CLI has no auth yet (that's stage 6) — one fixed local user owns
-    every report run from the command line."""
+    """The CLI has no auth — one fixed local user owns every CLI run."""
     result = await session.execute(select(User).where(User.email == CLI_LOCAL_USER_EMAIL))
     user = result.scalar_one_or_none()
     if user is not None:
@@ -54,12 +50,9 @@ async def get_or_create_company(
     cik: str | None = None,
     industry: str | None = None,
 ) -> Company:
-    """Dedup by domain (unique) when we have one — an ON CONFLICT upsert, not
-    check-then-insert, since two concurrent report runs (or, within one
-    report, a sequentially-resolved competitor that's also some other
-    report's target) can race to create the same company. Domain-less
-    companies can't be dedup'd this way (NULL never conflicts with NULL in a
-    Postgres unique index) — a known MVP gap, not silently wrong."""
+    """Dedup by domain via an ON CONFLICT upsert, not check-then-insert —
+    concurrent report runs can race to create the same company. Domain-less
+    companies can't be dedup'd this way (NULL never conflicts with NULL)."""
     if domain is not None:
         insert_stmt = (
             pg_insert(Company)
@@ -103,16 +96,10 @@ async def get_or_create_source(
     source_type: str = "official",
     published_at: datetime | None = None,
 ) -> tuple[Source, bool]:
-    """Dedup by URL (unique). Returns (source, content_changed) so callers can
-    skip re-extraction when the hash hasn't moved (design.md §4 invariant).
-
-    An ON CONFLICT upsert, not check-then-insert: companies are researched
-    concurrently (agents/orchestrator.py's per-company fan-out), and two of
-    them can legitimately fetch the same URL (a shared industry page, a
-    Wikipedia article) at the same moment — a plain SELECT-then-INSERT loses
-    that race with a UniqueViolationError, caught by this module's own tests
-    exercising concurrent research.
-    """
+    """Dedup by URL via an ON CONFLICT upsert, not check-then-insert — two
+    concurrently researched companies can legitimately fetch the same URL.
+    Returns (source, content_changed) so callers can skip re-extraction when
+    the hash hasn't moved."""
     insert_stmt = (
         pg_insert(Source)
         .values(
@@ -130,10 +117,8 @@ async def get_or_create_source(
 
     if inserted_id is not None:
         source = await session.get_one(Source, inserted_id)
-        return source, True  # brand new row — definitely "changed"
+        return source, True
 
-    # Someone (possibly a concurrently-running company's research) already
-    # holds this URL — fetch it and compare hashes ourselves.
     result = await session.execute(select(Source).where(Source.url == url))
     source = result.scalar_one()
     changed = source.content_hash != content_hash
@@ -178,12 +163,9 @@ async def get_covered_fields_from_source(
     fields: list[str],
     max_age_by_field: dict[str, timedelta],
 ) -> set[str]:
-    """Which of `fields` already have a FRESH claim for this exact (company,
-    source) pair. Used instead of the Source row's global content_hash flag
-    to decide whether re-extracting an unchanged page is actually redundant
-    *for this company* — a changed=False Source used to mean "skip" even for
-    a company that had never touched this URL before, a field never
-    extracted from it, or a claim that had already gone stale."""
+    """Which of `fields` already have a fresh claim for this exact (company,
+    source) pair — used instead of the Source's global content_hash flag,
+    which can't tell whether *this* company already extracted a field."""
     if not fields:
         return set()
     result = await session.execute(
@@ -196,7 +178,7 @@ async def get_covered_fields_from_source(
     now = _utcnow()
     covered: set[str] = set()
     for field, extracted_at in result.all():
-        max_age = max_age_by_field.get(field, timedelta(days=30))
+        max_age = max_age_by_field.get(field, DEFAULT_FRESHNESS_MAX_AGE)
         if extracted_at >= now - max_age:
             covered.add(field)
     return covered
@@ -205,8 +187,8 @@ async def get_covered_fields_from_source(
 async def get_fresh_claims(
     session: AsyncSession, company_id: uuid.UUID, field: str, max_age: timedelta
 ) -> list[Claim]:
-    """The cache lookup (design.md §4's hottest query) — fresh claims for
-    (company, field), used by the planner to decide what's still a gap."""
+    """Fresh claims for (company, field), used by the planner to decide
+    what's still a gap."""
     cutoff = _utcnow() - max_age
     result = await session.execute(
         select(Claim)
@@ -226,14 +208,11 @@ async def create_report(
     parent_report_id: uuid.UUID | None = None,
     audience: str = "analyst",
 ) -> Report:
-    """`status` defaults to "running" — the CLI calls this immediately before
-    starting the graph synchronously. The API passes status="queued" instead:
-    the job hasn't started until a worker picks it up (design.md §8).
-    `parent_report_id` links a refresh to the report it refreshed (design.md
-    §4: reports are immutable, so refresh creates a new version, never
-    mutates the old one). `audience` is persisted here (not just a transient
-    job-message field) so a refresh can read it back, same reasoning as
-    competitor_count historically needed REPORT_COMPETITORS for."""
+    """`status` defaults to "running" for the CLI's synchronous run; the API
+    passes status="queued" since a worker hasn't picked the job up yet.
+    `parent_report_id` links a refresh to the report it refreshed — reports
+    are immutable, so a refresh creates a new version rather than mutating
+    the old one."""
     report = Report(
         user_id=user_id,
         target_company_id=target_company_id,
@@ -264,8 +243,7 @@ async def get_report(session: AsyncSession, report_id: uuid.UUID) -> Report | No
 async def list_reports_for_user(
     session: AsyncSession, user_id: uuid.UUID, limit: int = 50
 ) -> list[Report]:
-    """Newest first, via the existing ix_reports_user_created index — the
-    history page's one query."""
+    """Newest first, via the ix_reports_user_created index."""
     result = await session.execute(
         select(Report)
         .where(Report.user_id == user_id)
@@ -304,10 +282,8 @@ async def add_report_competitors(
 
 
 async def count_report_competitors(session: AsyncSession, report_id: uuid.UUID) -> int:
-    """Not persisted on the Report row itself — competitor_count only ever
-    existed as a transient job-message field (worker/jobs.py). Refresh needs
-    to know how many competitors the original report actually used, and
-    REPORT_COMPETITORS is the one place that's recorded (design.md §4)."""
+    """Competitor count isn't persisted on the Report row itself; a refresh
+    reads it back from ReportCompetitor instead."""
     result = await session.execute(
         select(ReportCompetitor).where(ReportCompetitor.report_id == report_id)
     )
@@ -321,10 +297,9 @@ async def upsert_competitor_relationship(
     relevance: float,
     origin: str = "discovered",
 ) -> None:
-    """The competitor graph (design.md §4) — reused across reports, not
-    per-report. Upserts so re-discovering the same pair just refreshes
-    relevance/updated_at rather than duplicating the row (company_id,
-    competitor_id is the primary key)."""
+    """The competitor graph, reused across reports. Upserts so
+    re-discovering the same pair refreshes relevance/updated_at rather than
+    duplicating the row."""
     result = await session.execute(
         select(CompanyCompetitor).where(
             CompanyCompetitor.company_id == company_id,

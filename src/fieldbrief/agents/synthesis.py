@@ -234,10 +234,9 @@ async def run_synthesis(
                     "companies": placed,
                 }
 
-        # Strengths/Weaknesses used to come only from VRIO — an internal
-        # capability signal that isn't a resource/advantage claim (shrinking
-        # margins, customer concentration, a disclosed risk factor) had
-        # nowhere to go. Mirrors other_opportunities/other_threats below.
+        # Non-VRIO strengths/weaknesses (shrinking margins, customer
+        # concentration, a disclosed risk) — mirrors other_opportunities/
+        # other_threats below.
         for item_draft in result.other_strengths:
             claim_ids = resolve_ids(item_draft.source_claim_indices)
             if claim_ids:

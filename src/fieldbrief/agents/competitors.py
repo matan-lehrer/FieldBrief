@@ -3,6 +3,7 @@
 import httpx
 from pydantic import BaseModel, Field
 
+from fieldbrief.consts import COMPETITOR_DISCOVERY_MAX_CHARS
 from fieldbrief.fetch.clean import clean_html, select_relevant_passages
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
@@ -35,7 +36,9 @@ def _discovery_prompt(company_name: str, page_text: str) -> list[dict[str, str]]
         "rival",
         "vs",
     }
-    bounded_text = select_relevant_passages(page_text, keywords, max_chars=6000)
+    bounded_text = select_relevant_passages(
+        page_text, keywords, max_chars=COMPETITOR_DISCOVERY_MAX_CHARS
+    )
     user = f"Company: {company_name}\n\nPage text:\n{bounded_text}"
     return [
         {"role": "system", "content": system},

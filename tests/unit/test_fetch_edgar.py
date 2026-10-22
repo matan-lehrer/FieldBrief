@@ -2,17 +2,7 @@ import httpx
 import pytest
 import respx
 
-from fieldbrief.fetch.edgar import (
-    SUBMISSIONS_URL,
-    TICKERS_URL,
-    get_recent_annual_filings,
-    lookup_cik_by_ticker,
-)
-
-TICKERS_RESPONSE = {
-    "0": {"cik_str": 1576789, "ticker": "WIX", "title": "Wix.com Ltd."},
-    "1": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
-}
+from fieldbrief.fetch.edgar import SUBMISSIONS_URL, get_recent_annual_filings
 
 SUBMISSIONS_RESPONSE = {
     "name": "Wix.com Ltd.",
@@ -30,28 +20,6 @@ SUBMISSIONS_RESPONSE = {
         }
     },
 }
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_lookup_cik_by_ticker_found() -> None:
-    respx.get(TICKERS_URL).mock(return_value=httpx.Response(200, json=TICKERS_RESPONSE))
-
-    async with httpx.AsyncClient() as client:
-        cik = await lookup_cik_by_ticker(client, "wix")
-
-    assert cik == "1576789"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_lookup_cik_by_ticker_not_found() -> None:
-    respx.get(TICKERS_URL).mock(return_value=httpx.Response(200, json=TICKERS_RESPONSE))
-
-    async with httpx.AsyncClient() as client:
-        cik = await lookup_cik_by_ticker(client, "NOPE")
-
-    assert cik is None
 
 
 @pytest.mark.asyncio

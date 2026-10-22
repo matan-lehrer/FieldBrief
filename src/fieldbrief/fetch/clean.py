@@ -9,6 +9,8 @@ from datetime import date
 
 import trafilatura
 
+from fieldbrief.consts import EXTRACTION_MAX_CHARS
+
 
 def clean_html(html: str) -> str | None:
     """Extract the main article/body text, dropping nav/ads/boilerplate. None if too thin to use."""
@@ -41,13 +43,12 @@ def extract_metadata(html: str) -> tuple[str | None, date | None]:
     return title, published
 
 
-def select_relevant_passages(text: str, keywords: Iterable[str], max_chars: int = 8000) -> str:
-    """Bounded, relevance-ranked passage selection instead of a blind head
-    slice — a passage that answers a requested field several screens down
-    used to never reach the extractor at all, since the prompt only ever
-    sent `page_text[:max_chars]`. Scores each paragraph by keyword overlap
-    and greedily keeps the highest-scoring ones that fit the budget, then
-    restores their original order. Pure local text scoring, no LLM call."""
+def select_relevant_passages(
+    text: str, keywords: Iterable[str], max_chars: int = EXTRACTION_MAX_CHARS
+) -> str:
+    """Bounded, relevance-ranked passage selection — scores each paragraph
+    by keyword overlap and greedily keeps the highest-scoring ones that fit
+    the budget, then restores their original order."""
     if len(text) <= max_chars:
         return text
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
