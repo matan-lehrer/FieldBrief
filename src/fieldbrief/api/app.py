@@ -88,21 +88,22 @@ async def resolve_company(body: ResolveRequest) -> CompanyOut:
         candidates = await search_candidates(
             wikidata_client, body.query, limit=WIKIDATA_CANDIDATE_LIMIT
         )
-        if not candidates:
-            raise HTTPException(status_code=404, detail=f"no candidates found for '{body.query}'")
-        best = await pick_company_like(wikidata_client, candidates) or candidates[0]
-        details = await get_company_details(wikidata_client, best.qid)
+        best = await pick_company_like(wikidata_client, candidates) if candidates else None
+        details = await get_company_details(wikidata_client, best.qid) if best else None
 
     async with SessionFactory() as session:
-        company = await get_or_create_company(
-            session,
-            name=details.name,
-            domain=details.domain,
-            aliases=details.aliases,
-            ticker=details.ticker,
-            cik=details.cik,
-            industry=details.industry,
-        )
+        if details is not None:
+            company = await get_or_create_company(
+                session,
+                name=details.name,
+                domain=details.domain,
+                aliases=details.aliases,
+                ticker=details.ticker,
+                cik=details.cik,
+                industry=details.industry,
+            )
+        else:
+            company = await get_or_create_company(session, name=body.query)
         await session.commit()
         return CompanyOut(
             id=company.id, name=company.name, domain=company.domain, industry=company.industry

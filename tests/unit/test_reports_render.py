@@ -78,7 +78,6 @@ def test_render_report_html_includes_company_name_and_gap() -> None:
     claims = {
         CID1: {
             "statement": "Acme makes widgets.",
-            "excerpt": None,
             "source_url": "https://acme.com",
             "source_type": "official",
             "publisher": "acme.com",
@@ -94,16 +93,16 @@ def test_render_report_html_includes_company_name_and_gap() -> None:
     assert "{{" not in html and "{%" not in html
 
 
-def test_render_report_html_has_section_nav_and_source_popover() -> None:
+def test_render_report_html_has_source_popover_linking_to_the_origin() -> None:
     """Sources are a hover/click trigger, not an always-visible list — but
     the actual finding text is always on the page regardless; the trigger
-    only ever reveals source metadata, never the only copy of the answer."""
+    only ever reveals a plain link to the source, never the only copy of
+    the answer, and never a quoted excerpt."""
     target_id = str(uuid.uuid4())
     report = _minimal_report(target_id)
     claims = {
         CID1: {
             "statement": "Acme makes widgets.",
-            "excerpt": "Acme Corp is a widget manufacturer founded in 2010.",
             "source_url": "https://acme.com",
             "source_type": "official",
             "publisher": "acme.com",
@@ -114,23 +113,21 @@ def test_render_report_html_has_section_nav_and_source_popover() -> None:
     html = render_report_html(report, claims, "Acme Corp")
 
     assert '<section id="snapshot">' in html
-    assert 'href="#snapshot"' in html
     assert "1 source" in html  # the popover trigger, not an always-visible list
     assert "Acme makes widgets." in html  # the finding itself, directly on the page
-    assert "Acme Corp is a widget manufacturer" in html  # the real excerpt, inside the popover
+    assert 'href="https://acme.com"' in html  # a plain link to the origin
     assert "acme.com" in html
 
 
 def test_sources_popover_never_shows_the_statement_as_a_quote() -> None:
     """A claim's own generated statement is never presented as if it were a
-    verbatim source quotation — only a real, verified excerpt earns quote
-    marks; without one, the popover shows just the publisher and link."""
+    verbatim source quotation — the popover shows only the publisher,
+    date, and a link, never a quote."""
     target_id = str(uuid.uuid4())
     report = _minimal_report(target_id)
     claims = {
         CID1: {
             "statement": "Acme makes widgets.",
-            "excerpt": None,
             "source_url": "https://acme.com",
             "source_type": "official",
             "publisher": "Acme Newsroom",
@@ -140,7 +137,7 @@ def test_sources_popover_never_shows_the_statement_as_a_quote() -> None:
 
     html = render_report_html(report, claims, "Acme Corp")
 
-    assert "&ldquo;Acme makes widgets.&rdquo;" not in html
+    assert "&ldquo;" not in html and "&rdquo;" not in html
     assert "Acme Newsroom" in html
     assert "2026-01-15" in html
 
@@ -165,7 +162,6 @@ def test_render_pdf_html_has_content_parity_with_the_web_report() -> None:
     claims = {
         CID1: {
             "statement": "Acme makes widgets for small businesses.",
-            "excerpt": None,
             "source_url": "https://acme.com",
             "source_type": "official",
             "publisher": "Acme Newsroom",

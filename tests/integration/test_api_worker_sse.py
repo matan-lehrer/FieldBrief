@@ -226,6 +226,41 @@ async def test_report_runs_through_api_with_live_sse_progress() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_falls_back_to_a_bare_company_when_wikidata_has_no_match() -> None:
+    """A real company Wikidata simply doesn't cover well (no candidates, or
+    none classified as a business) must still resolve — by the user's own
+    typed name — rather than a 404 that blocks starting a report at all."""
+    created_company_id: uuid.UUID | None = None
+
+    try:
+        with (
+            patch("fieldbrief.api.app.search_candidates", new=AsyncMock(return_value=[])),
+        ):
+            transport = httpx.ASGITransport(app=fastapi_app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://test",
+                headers={"X-API-Key": settings.api_key},
+            ) as client:
+                resolve_resp = await client.post(
+                    "/companies/resolve", json={"query": "Some Obscure Startup"}
+                )
+                assert resolve_resp.status_code == 200
+                body = resolve_resp.json()
+                assert body["name"] == "Some Obscure Startup"
+                assert body["domain"] is None
+                created_company_id = uuid.UUID(body["id"])
+    finally:
+        if created_company_id is not None:
+            async with SessionFactory() as cleanup_session:
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
+                await cleanup_session.commit()
+            await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_view_shows_progress_shell_for_an_unfinished_report() -> None:
     """The other branch of /view — a report still running gets the SSE-driven
     progress shell, not a 404 or a half-rendered report."""

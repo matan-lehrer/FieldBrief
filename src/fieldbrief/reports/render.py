@@ -84,7 +84,6 @@ async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[s
     return {
         str(c.id): {
             "statement": c.statement,
-            "excerpt": c.snippet or None,
             "source_url": sources[c.source_id].url,
             "source_type": sources[c.source_id].source_type,
             "publisher": _publisher_label(sources[c.source_id]),

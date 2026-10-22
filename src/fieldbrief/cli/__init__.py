@@ -12,6 +12,7 @@ from fieldbrief.agents.field_checklist import (
 )
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.config import settings
+from fieldbrief.consts import WIKIDATA_CANDIDATE_LIMIT
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
 from fieldbrief.db.session import SessionFactory
 from fieldbrief.fetch.clean import clean_html, content_hash
@@ -52,14 +53,16 @@ async def _analyze(
     audience: Audience = DEFAULT_AUDIENCE,
 ) -> None:
     async with httpx.AsyncClient(headers={"User-Agent": DEFAULT_USER_AGENT}) as wikidata_client:
-        candidates = await search_candidates(wikidata_client, company_name, limit=5)
-        if not candidates:
-            typer.echo(f"No Wikidata candidates found for '{company_name}'.")
-            raise typer.Exit(code=1)
-        best = await pick_company_like(wikidata_client, candidates) or candidates[0]
-        details = await get_company_details(wikidata_client, best.qid)
+        candidates = await search_candidates(
+            wikidata_client, company_name, limit=WIKIDATA_CANDIDATE_LIMIT
+        )
+        best = await pick_company_like(wikidata_client, candidates) if candidates else None
+        details = await get_company_details(wikidata_client, best.qid) if best else None
 
-        typer.echo(f"Resolved to: {details.name} ({details.qid})")
+        if details is not None:
+            typer.echo(f"Resolved to: {details.name} ({details.qid})")
+        else:
+            typer.echo(f"No confirmed Wikidata match for '{company_name}' — researching by name.")
 
         budget = Budget(limit_usd=budget_usd)
         gateway = LLMGateway()
@@ -70,15 +73,18 @@ async def _analyze(
         try:
             async with SessionFactory() as session:
                 user = await get_or_create_cli_user(session)
-                company = await get_or_create_company(
-                    session,
-                    name=details.name,
-                    domain=details.domain,
-                    aliases=details.aliases,
-                    ticker=details.ticker,
-                    cik=details.cik,
-                    industry=details.industry,
-                )
+                if details is not None:
+                    company = await get_or_create_company(
+                        session,
+                        name=details.name,
+                        domain=details.domain,
+                        aliases=details.aliases,
+                        ticker=details.ticker,
+                        cik=details.cik,
+                        industry=details.industry,
+                    )
+                else:
+                    company = await get_or_create_company(session, name=company_name)
                 report = await create_report(
                     session,
                     user_id=user.id,
