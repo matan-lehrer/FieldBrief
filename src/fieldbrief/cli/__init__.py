@@ -55,6 +55,7 @@ async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_
         gateway = LLMGateway()
         fetcher = Fetcher()
         http_client = httpx.AsyncClient()
+        edgar_client = httpx.AsyncClient(headers={"User-Agent": settings.sec_user_agent})
 
         try:
             async with SessionFactory() as session:
@@ -90,10 +91,12 @@ async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_
                     target_company=company,
                     tier=tier,
                     competitor_count=competitor_count,
+                    edgar_client=edgar_client,
                 )
         finally:
             await fetcher.aclose()
             await http_client.aclose()
+            await edgar_client.aclose()
 
     typer.echo(f"\nDone. Cost: ${budget.spent_usd:.4f} / ${budget.limit_usd:.2f}")
     typer.echo(json.dumps(report_json, indent=2))

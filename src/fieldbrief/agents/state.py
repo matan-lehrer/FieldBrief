@@ -22,6 +22,7 @@ class GraphState(TypedDict):
     company_id: str
     company_name: str
     company_domain: str | None
+    company_cik: str | None  # set when Wikidata resolved a CIK — enables EDGAR filings as a source
     is_target: bool
     tier: Tier
     retry_round: int

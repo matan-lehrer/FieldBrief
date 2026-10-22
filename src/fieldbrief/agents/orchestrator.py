@@ -65,6 +65,7 @@ async def _research_company(
     http_client: httpx.AsyncClient,
     searxng_url: str,
     progress: ProgressSink,
+    edgar_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     """Its own session, not the caller's — this runs concurrently with every
     other company's research (asyncio.gather below), and AsyncSession isn't
@@ -80,6 +81,7 @@ async def _research_company(
             http_client=http_client,
             searxng_url=searxng_url,
             tier=tier,
+            edgar_client=edgar_client,
             progress=progress,
         )
         initial: GraphState = {
@@ -87,6 +89,7 @@ async def _research_company(
             "company_id": str(company.id),
             "company_name": company.name,
             "company_domain": company.domain,
+            "company_cik": company.cik,
             "is_target": is_target,
             "tier": tier,
             "retry_round": 0,
@@ -113,6 +116,7 @@ async def run_report(
     tier: Tier,
     competitor_count: int,
     progress: ProgressSink = _NULL_PROGRESS,
+    edgar_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     competitors: list[Company] = []
     if competitor_count > 0:
@@ -154,6 +158,7 @@ async def run_report(
                 http_client=http_client,
                 searxng_url=searxng_url,
                 progress=progress,
+                edgar_client=edgar_client,
             )
             for company in companies
         )

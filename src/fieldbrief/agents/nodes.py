@@ -26,9 +26,10 @@ from fieldbrief.agents.field_checklist import Tier, fields_for
 from fieldbrief.agents.llm_schemas import ClaimVerification, ExtractionResult
 from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
-from fieldbrief.db.models import Claim, Source
+from fieldbrief.db.models import Claim, Company, Source
 from fieldbrief.db.repositories import add_claim, get_fresh_claims, get_or_create_source
 from fieldbrief.fetch.clean import clean_html, content_hash
+from fieldbrief.fetch.edgar import get_recent_annual_filings
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
 from fieldbrief.llm.budget import Budget
@@ -56,6 +57,22 @@ SEARCH_GROUPS: list[tuple[set[str], str]] = [
 ]
 RESULTS_PER_SEARCH = 4  # enough headroom for a few retry rounds to each see a fresh result
 
+# Fields official SEC filings can answer directly (10-K/20-F/40-F) — tried
+# before the generic search path, and persisted as source_type="filing"
+# (confidence.py's highest reliability tier) instead of scraped news/blog text.
+EDGAR_FIELDS: set[str] = {
+    "financials.revenue",
+    "financials.profitability",
+    "financials.funding_or_cap",
+}
+
+# Fields where a single source isn't enough to build real confidence on —
+# these feed "predictions" directly, so fetch a second independent result in
+# the same round instead of hoping a retry round happens to pick a new one
+# (it usually doesn't: a retry round only fires if the gap is still open,
+# and one successful source closes it).
+CORROBORATE_FIELDS: set[str] = EDGAR_FIELDS | {"market.forces"}
+
 _NULL_PROGRESS = NullProgressSink()
 
 
@@ -80,6 +97,117 @@ async def plan_node(state: GraphState, *, session: AsyncSession) -> dict[str, An
     return {"gaps": gaps, "retry_round": 0}
 
 
+async def _extract_and_store_claims(
+    *,
+    session: AsyncSession,
+    gateway: LLMGateway,
+    budget: Budget,
+    report_id: str,
+    company_id: uuid.UUID,
+    company_name: str,
+    source: Source,
+    cleaned: str,
+    fields: list[str],
+    claim_ids: list[str],
+) -> None:
+    """Shared tail end of "fetched a page -> extract claims -> verify each"
+    (design.md §9) — used for both the normal search-result fetch loop and
+    the EDGAR filing path below, which differ only in how the page/source
+    was obtained."""
+    extraction = await gateway.call(
+        Task.EXTRACT,
+        prompts.extraction_prompt(company_name, cleaned, fields),
+        ExtractionResult,
+        budget,
+        report_id=report_id,
+        stage="research",
+    )
+    for extracted in extraction.claims:
+        # The full cleaned page, not a fixed-size head slice: a claim
+        # correctly extracted from anywhere past the first ~500 chars
+        # used to fail verification purely because the snippet it was
+        # checked against never contained it — a real bug that silently
+        # turned good extractions into "not found" gaps.
+        snippet = cleaned
+        value = dict(extracted.value)
+        if extracted.bmc_block:
+            value["bmc_block"] = extracted.bmc_block
+        claim = await add_claim(
+            session,
+            company_id=company_id,
+            source_id=source.id,
+            field=extracted.field,
+            statement=extracted.statement,
+            value=value,
+            snippet=snippet,
+            relevance=extracted.relevance,
+        )
+        verification = await gateway.call(
+            Task.VERIFY,
+            prompts.verification_prompt(extracted.statement, snippet),
+            ClaimVerification,
+            budget,
+            report_id=report_id,
+            stage="verify",
+        )
+        claim.verified = verification.verified
+        await session.flush()
+        claim_ids.append(str(claim.id))
+
+
+async def _research_financials_via_edgar(
+    *,
+    session: AsyncSession,
+    gateway: LLMGateway,
+    budget: Budget,
+    edgar_client: httpx.AsyncClient,
+    company_id: uuid.UUID,
+    company_name: str,
+    cik: str,
+    report_id: str,
+    fields: list[str],
+    claim_ids: list[str],
+) -> None:
+    """Official-source financials (design.md hard constraint 5: accuracy over
+    polish) — tried before the scraped-page path for companies with a CIK.
+    Never raises: a 403/rate-limit from SEC (a known failure mode per
+    fetch/edgar.py's own docstring) just means the normal search path below
+    still runs, so EDGAR being unavailable never blocks the pipeline."""
+    try:
+        filings = await get_recent_annual_filings(edgar_client, cik, limit=1)
+    except httpx.HTTPError:
+        return
+    for filing in filings:
+        try:
+            response = await edgar_client.get(filing.document_url)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        cleaned = clean_html(response.text)
+        if cleaned is None:
+            continue
+        source, changed = await get_or_create_source(
+            session,
+            url=filing.document_url,
+            content_hash=content_hash(cleaned),
+            source_type="filing",
+        )
+        if not changed:
+            continue
+        await _extract_and_store_claims(
+            session=session,
+            gateway=gateway,
+            budget=budget,
+            report_id=report_id,
+            company_id=company_id,
+            company_name=company_name,
+            source=source,
+            cleaned=cleaned,
+            fields=fields,
+            claim_ids=claim_ids,
+        )
+
+
 async def research_node(
     state: GraphState,
     *,
@@ -89,6 +217,7 @@ async def research_node(
     fetcher: Fetcher,
     http_client: httpx.AsyncClient,
     searxng_url: str,
+    edgar_client: httpx.AsyncClient | None = None,
     progress: ProgressSink = _NULL_PROGRESS,
 ) -> dict[str, Any]:
     """One research round. The overview/domain page covers most fields in one
@@ -111,6 +240,23 @@ async def research_node(
 
     await progress.emit(Stage.RESEARCHING, f"Researching {company_name}")
 
+    cik = state.get("company_cik")
+    edgar_fields = sorted(EDGAR_FIELDS & gap_fields)
+    if cik and edgar_fields and edgar_client is not None:
+        await progress.emit(Stage.RESEARCHING, f"{company_name}: checking SEC filings")
+        await _research_financials_via_edgar(
+            session=session,
+            gateway=gateway,
+            budget=budget,
+            edgar_client=edgar_client,
+            company_id=company_id,
+            company_name=company_name,
+            cik=cik,
+            report_id=state["report_id"],
+            fields=edgar_fields,
+            claim_ids=claim_ids,
+        )
+
     urls: list[str] = []
     if company_domain:
         urls.append(company_domain)
@@ -130,8 +276,19 @@ async def research_node(
             query_template.format(name=company_name),
             limit=RESULTS_PER_SEARCH,
         )
-        if results:
-            urls.append(results[min(round_index, len(results) - 1)].url)
+        if not results:
+            continue
+        picks = [results[min(round_index, len(results) - 1)].url]
+        if group_fields & CORROBORATE_FIELDS and len(results) > 1:
+            # A second, independent source in the SAME round — corroboration
+            # otherwise never happens in practice: a retry round only fires
+            # while the gap is still open, and one successful source closes
+            # it immediately (reports/confidence.py's corroboration bonus
+            # was dead code without this).
+            second = results[min(round_index + 1, len(results) - 1)].url
+            if second not in picks:
+                picks.append(second)
+        urls.extend(picks)
 
     for url in urls:
         await progress.emit(Stage.RESEARCHING, f"{company_name}: reading {urlparse(url).netloc}")
@@ -151,45 +308,18 @@ async def research_node(
         if not changed:
             continue  # same content already extracted previously — skip re-extraction
 
-        extraction = await gateway.call(
-            Task.EXTRACT,
-            prompts.extraction_prompt(company_name, cleaned, sorted(gap_fields)),
-            ExtractionResult,
-            budget,
+        await _extract_and_store_claims(
+            session=session,
+            gateway=gateway,
+            budget=budget,
             report_id=state["report_id"],
-            stage="research",
+            company_id=company_id,
+            company_name=company_name,
+            source=source,
+            cleaned=cleaned,
+            fields=sorted(gap_fields),
+            claim_ids=claim_ids,
         )
-        for extracted in extraction.claims:
-            # The full cleaned page, not a fixed-size head slice: a claim
-            # correctly extracted from anywhere past the first ~500 chars
-            # used to fail verification purely because the snippet it was
-            # checked against never contained it — a real bug that silently
-            # turned good extractions into "not found" gaps.
-            snippet = cleaned
-            value = dict(extracted.value)
-            if extracted.bmc_block:
-                value["bmc_block"] = extracted.bmc_block
-            claim = await add_claim(
-                session,
-                company_id=company_id,
-                source_id=source.id,
-                field=extracted.field,
-                statement=extracted.statement,
-                value=value,
-                snippet=snippet,
-                relevance=extracted.relevance,
-            )
-            verification = await gateway.call(
-                Task.VERIFY,
-                prompts.verification_prompt(extracted.statement, snippet),
-                ClaimVerification,
-                budget,
-                report_id=state["report_id"],
-                stage="verify",
-            )
-            claim.verified = verification.verified
-            await session.flush()
-            claim_ids.append(str(claim.id))
 
     return {"claim_ids": claim_ids}
 
@@ -244,11 +374,35 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
             return None
         return compute_citation(field_claims, sources).model_dump(mode="json")
 
+    # Plain facts, not judgment calls — shown without a citation wrapper
+    # (report.html already expects c.hq/c.founded as bare strings). Was
+    # extracted and verified like any other claim but never actually reached
+    # the snapshot: profile.hq_founded's claims existed in the DB with
+    # nowhere to go. First verified claim that supplies each half wins.
+    hq: str | None = None
+    founded: str | None = None
+    for claim in by_field.get("profile.hq_founded", []):
+        if hq is None and claim.value.get("hq"):
+            hq = str(claim.value["hq"])
+        if founded is None and claim.value.get("founded_year"):
+            founded = str(claim.value["founded_year"])
+
+    # Official Wikidata facts already sitting on the Company row — free,
+    # no extraction needed, and more reliable than anything scraped.
+    company = await session.get(Company, company_id)
+    industry = company.industry if company else None
+    ticker = company.ticker if company else None
+
     snapshot = {
         "company_id": str(company_id),
         "name": state["company_name"],
         "is_target": state["is_target"],
         "description": citation_for("profile.description"),
+        "hq": hq,
+        "founded": founded,
+        "industry": industry,
+        "ticker": ticker,
+        "employees": citation_for("profile.employees"),
         "products": citation_for("offering.products"),
         "customer_segments": citation_for("customers.segments"),
         "revenue_model": citation_for("revenue.model"),
