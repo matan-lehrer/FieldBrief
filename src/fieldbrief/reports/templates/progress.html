@@ -8,7 +8,6 @@
 <style>
   .center-card { padding: 40px 36px; margin: 64px auto 0; max-width: 560px; }
   .center-card h1 { font-size: 22px; margin: 0 0 4px; }
-  .center-card .sub { color: var(--muted); font-size: 14px; }
   .status-line { margin-top: 36px; text-align: center; font-size: 14px; color: var(--ink-soft);
     display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 20px; }
   .elapsed { text-align: center; font-size: 12px; color: var(--muted); margin-top: 6px; }
@@ -22,8 +21,6 @@
 
 <div class="card center-card fade-in">
   <h1>Analyzing {{ company_name }}</h1>
-  <div class="sub">This runs live — real web research, no mocked data.</div>
-
   <div class="stepper" id="stepper">
     <div class="step" data-stage="discovering"><div class="step-dot">1</div><div class="step-label">Discover</div></div>
     <div class="step" data-stage="researching"><div class="step-dot">2</div><div class="step-label">Research</div></div>

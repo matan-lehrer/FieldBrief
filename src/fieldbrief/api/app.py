@@ -220,64 +220,81 @@ async def refresh_report(report_id: UUID) -> CreateReportResponse:
     return CreateReportResponse(report_id=new_report_id)
 
 
+async def _terminal_event_from_db(report_id: UUID) -> str | None:
+    """A worker that finishes (or dies) between this connection opening and
+    the queue bind in progress_event_stream below would publish into an
+    exchange with no bound queue yet — AMQP topic exchanges don't replay to
+    late subscribers, so that message is simply gone. Falling back to the
+    Report row's own status is what keeps a client from hanging forever on a
+    "done" that already happened."""
+    async with SessionFactory() as session:
+        report = await get_report(session, report_id)
+    if report is None or report.status not in ("done", "partial", "failed"):
+        return None
+    stage = Stage.DONE.value if report.status != "failed" else Stage.FAILED.value
+    return json.dumps({"report_id": str(report_id), "stage": stage, "message": report.status})
+
+
+async def progress_event_stream(report_id: UUID) -> AsyncIterator[str]:
+    """The SSE body (design.md: "Worker -> RabbitMQ topic exchange -> API ->
+    SSE"). A module-level function, not a route-local closure, so it can be
+    iterated directly in tests — httpx's ASGITransport buffers an entire
+    StreamingResponse until its generator fully completes rather than
+    delivering chunks as they're yielded, which makes it useless for testing
+    a stream that's still open seconds later (every real browser/uvicorn
+    connection delivers each chunk immediately; only the test transport
+    doesn't)."""
+    connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+    # A plain local queue, not aio_pika's own iterator: asyncio.wait_for
+    # below needs to cancel the wait on a 5s timeout, and cancelling a call
+    # into aio_pika's RobustQueue iterator poisons it (confirmed live — the
+    # next __anext__() raises a bare StopAsyncIteration, which PEP 479 turns
+    # into a RuntimeError that kills the whole SSE response, so the
+    # browser's EventSource reconnects into the exact same crash forever).
+    # A push consumer feeding this plain asyncio.Queue sidesteps that:
+    # cancelling asyncio.Queue.get() is always safe.
+    local_queue: asyncio.Queue[aio_pika.abc.AbstractIncomingMessage] = asyncio.Queue()
+    try:
+        channel = await connection.channel()
+        exchange = await channel.declare_exchange(
+            PROGRESS_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
+        )
+        queue = await channel.declare_queue(exclusive=True, auto_delete=True)
+        await queue.bind(exchange, routing_key=routing_key_for(str(report_id)))
+        await queue.consume(local_queue.put)
+
+        # Bound first, so nothing published after this point is missed; this
+        # catches anything that finished before the bind above.
+        catch_up = await _terminal_event_from_db(report_id)
+        if catch_up is not None:
+            yield f"data: {catch_up}\n\n"
+            return
+
+        while True:
+            try:
+                message = await asyncio.wait_for(local_queue.get(), timeout=5.0)
+            except TimeoutError:
+                # No progress message in 5s — poll the Report row so a
+                # client never hangs past the job's actual completion.
+                catch_up = await _terminal_event_from_db(report_id)
+                if catch_up is not None:
+                    yield f"data: {catch_up}\n\n"
+                    return
+                continue
+            async with message.process():
+                payload = json.loads(message.body)
+                yield f"data: {json.dumps(payload)}\n\n"
+                if payload.get("stage") in (Stage.DONE.value, Stage.FAILED.value):
+                    return
+    finally:
+        await connection.close()
+
+
 @app.get("/reports/{report_id}/events", dependencies=[Depends(require_api_key)])
 async def report_events(report_id: UUID) -> StreamingResponse:
-    """SSE progress stream (design.md: "Worker -> RabbitMQ topic exchange ->
-    API -> SSE"). One exclusive, auto-delete queue per connection, bound to
-    this report's routing key — closes on DONE/FAILED or client disconnect."""
-
-    async def _terminal_event_from_db() -> str | None:
-        """A worker that finishes (or dies) between this connection opening
-        and the queue bind below would publish into an exchange with no
-        bound queue yet — AMQP topic exchanges don't replay to late
-        subscribers, so that message is simply gone. Falling back to the
-        Report row's own status is what keeps a client from hanging forever
-        on a "done" that already happened."""
-        async with SessionFactory() as session:
-            report = await get_report(session, report_id)
-        if report is None or report.status not in ("done", "partial", "failed"):
-            return None
-        stage = Stage.DONE.value if report.status != "failed" else Stage.FAILED.value
-        return json.dumps({"report_id": str(report_id), "stage": stage, "message": report.status})
-
-    async def event_stream() -> AsyncIterator[str]:
-        connection = await aio_pika.connect_robust(settings.rabbitmq_url)
-        try:
-            channel = await connection.channel()
-            exchange = await channel.declare_exchange(
-                PROGRESS_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
-            )
-            queue = await channel.declare_queue(exclusive=True, auto_delete=True)
-            await queue.bind(exchange, routing_key=routing_key_for(str(report_id)))
-
-            # Bound first, so nothing published after this point is missed;
-            # this catches anything that finished before the bind above.
-            catch_up = await _terminal_event_from_db()
-            if catch_up is not None:
-                yield f"data: {catch_up}\n\n"
-                return
-
-            async with queue.iterator() as queue_iter:
-                while True:
-                    try:
-                        message = await asyncio.wait_for(queue_iter.__anext__(), timeout=5.0)
-                    except TimeoutError:
-                        # No progress message in 5s — poll the Report row so a
-                        # client never hangs past the job's actual completion.
-                        catch_up = await _terminal_event_from_db()
-                        if catch_up is not None:
-                            yield f"data: {catch_up}\n\n"
-                            return
-                        continue
-                    async with message.process():
-                        payload = json.loads(message.body)
-                        yield f"data: {json.dumps(payload)}\n\n"
-                        if payload.get("stage") in (Stage.DONE.value, Stage.FAILED.value):
-                            return
-        finally:
-            await connection.close()
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    """One exclusive, auto-delete queue per connection, bound to this
+    report's routing key — closes on DONE/FAILED or client disconnect."""
+    return StreamingResponse(progress_event_stream(report_id), media_type="text/event-stream")
 
 
 async def _render_finished_report(report_id: UUID, api_key: str | None = None) -> str | None:
