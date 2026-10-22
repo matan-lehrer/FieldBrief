@@ -533,8 +533,12 @@ Search (SearXNG), fetch (httpx; Playwright for JS pages), clean (trafilatura), d
 ### PDF
 Same Jinja2 HTML as the web view + print stylesheet, rendered by Playwright. Charts as server-side SVG. Reports are immutable, so a rendered PDF never goes stale.
 
+**Implementation notes (stage 7):** `reports/render.py` resolves every `claim_id` referenced anywhere in `report_json` to its actual statement + source URL with one batched query (the report only ever stores IDs — design.md §4/§5), then hands off to `reports/templates/report.html`. Positioning is an inline-CSS scatter (no chart library, no external assets — print-safe). `GET /reports/{id}/pdf` calls `reports/pdf.py` (Playwright) on the same HTML every time; nothing is cached, since an immutable report has nothing to invalidate. **Not verified in this environment:** Playwright's Chromium needs system shared libraries (`libnspr4.so` and others) that `playwright install --with-deps` can't install without root, which isn't available here — the PDF code is written and type-checked but unexecuted; verify on a machine with those deps (or once stage 8 containerizes the app).
+
 ### Progress UX
 Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING -> SYNTHESIZING -> RENDERING`) + real findings ("Found 4 competitors", "Revenue: $412M") + an optional playful sub-line. Sections render as they complete.
+
+**Implementation notes (stage 7):** `GET /reports/{id}/view` serves either the finished, fully-rendered report, or — while a report is still running — a small shell page whose embedded JS opens the same `/events` SSE stream and reloads once it reaches a terminal stage. Swapping individual sections in via HTMX as each framework completes (rather than a full reload at the end) is the natural next step, deferred for now: there's no browser available in this dev environment to verify that interaction visually, and a full reload still satisfies the "live progress, then the finished report" contract. Browser-native `EventSource` can't send custom headers at all, so the API key for `/events` also accepts a `?api_key=` query param (header stays the primary method for every other endpoint) — `/view`'s shell embeds whichever one it itself was loaded with.
 
 ---
 

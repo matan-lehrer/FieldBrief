@@ -16,8 +16,8 @@ from uuid import UUID
 
 import aio_pika
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from faststream.rabbit import RabbitBroker
 
 from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT
@@ -30,6 +30,7 @@ from fieldbrief.api.schemas import (
     ResolveRequest,
 )
 from fieldbrief.config import settings
+from fieldbrief.db.models import Company
 from fieldbrief.db.repositories import (
     create_report,
     get_or_create_cli_user,
@@ -40,6 +41,8 @@ from fieldbrief.db.repositories import (
 from fieldbrief.db.session import SessionFactory
 from fieldbrief.fetch.http import DEFAULT_USER_AGENT
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
+from fieldbrief.reports.pdf import render_report_pdf
+from fieldbrief.reports.render import build_claims_map, collect_claim_ids, render_report_html
 from fieldbrief.worker.jobs import REPORT_JOBS_QUEUE, ReportJob
 
 job_broker = RabbitBroker(settings.rabbitmq_url)
@@ -57,9 +60,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="FieldBrief API", lifespan=lifespan)
 
 
-async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
-    if x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+async def require_api_key(
+    x_api_key: Annotated[str | None, Header()] = None,
+    api_key: Annotated[str | None, Query()] = None,
+) -> None:
+    """Header is the primary method; `?api_key=` is a fallback for
+    browser-native EventSource, which can't send custom headers at all —
+    `/view`'s embedded JS needs some way to authenticate its SSE call."""
+    if settings.api_key not in (x_api_key, api_key):
+        raise HTTPException(status_code=401, detail="invalid or missing API key")
 
 
 @app.post("/companies/resolve", response_model=CompanyOut, dependencies=[Depends(require_api_key)])
@@ -206,3 +215,70 @@ async def report_events(report_id: UUID) -> StreamingResponse:
             await connection.close()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _progress_shell_html(report_id: UUID, api_key: str | None) -> str:
+    """A tiny page for a report that isn't finished yet: listens to its own
+    SSE stream and reloads once done (design.md "Progress UX" — this is the
+    MVP version; swapping individual sections in via HTMX as they complete,
+    rather than a full reload, is a reasonable future enhancement once
+    there's a browser available in dev to verify it visually)."""
+    key_param = f"?api_key={api_key}" if api_key else ""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Generating report…</title>
+<style>body{{font-family:-apple-system,sans-serif;max-width:640px;margin:64px auto;
+color:#1a1d23;}} #status{{color:#5b6270;}}</style></head>
+<body>
+<h1>Generating your report…</h1>
+<p id="status">connecting…</p>
+<script>
+const es = new EventSource("/reports/{report_id}/events{key_param}");
+es.onmessage = (e) => {{
+  const data = JSON.parse(e.data);
+  document.getElementById("status").textContent = data.stage + ": " + data.message;
+  if (data.stage === "done" || data.stage === "failed") {{
+    es.close();
+    location.reload();
+  }}
+}};
+es.onerror = () => {{
+  document.getElementById("status").textContent = "connection lost - retrying...";
+}};
+</script>
+</body></html>"""
+
+
+async def _render_finished_report(report_id: UUID) -> str | None:
+    async with SessionFactory() as session:
+        report = await get_report(session, report_id)
+        if report is None or report.status not in ("done", "partial") or report.report_json is None:
+            return None
+        company = await session.get(Company, report.target_company_id)
+        claim_ids = collect_claim_ids(report.report_json)
+        claims = await build_claims_map(session, claim_ids)
+        return render_report_html(report.report_json, claims, company.name if company else "Report")
+
+
+@app.get("/reports/{report_id}/view", dependencies=[Depends(require_api_key)])
+async def view_report(
+    report_id: UUID, api_key: Annotated[str | None, Query()] = None
+) -> HTMLResponse:
+    html = await _render_finished_report(report_id)
+    if html is not None:
+        return HTMLResponse(html)
+    async with SessionFactory() as session:
+        if await get_report(session, report_id) is None:
+            raise HTTPException(status_code=404, detail="report not found")
+    return HTMLResponse(_progress_shell_html(report_id, api_key))
+
+
+@app.get("/reports/{report_id}/pdf", dependencies=[Depends(require_api_key)])
+async def report_pdf(report_id: UUID) -> Response:
+    """design.md §9: "Reports are immutable, so a rendered PDF never goes
+    stale" — rendered on demand from the same immutable report_json/claims
+    every time, not cached, since there's nothing to invalidate."""
+    html = await _render_finished_report(report_id)
+    if html is None:
+        raise HTTPException(status_code=404, detail="report not found or not finished")
+    pdf_bytes = await render_report_pdf(html)
+    return Response(content=pdf_bytes, media_type="application/pdf")
