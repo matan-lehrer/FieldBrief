@@ -32,6 +32,7 @@ from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
 from fieldbrief.llm.budget import Budget, BudgetExceededError
 from fieldbrief.llm.gateway import LLMGateway
+from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
 _NULL_PROGRESS = NullProgressSink()
 
@@ -149,6 +150,7 @@ async def run_report(
     progress: ProgressSink = _NULL_PROGRESS,
     edgar_client: httpx.AsyncClient | None = None,
     time_budget_seconds: float | None = None,
+    audience: Audience = DEFAULT_AUDIENCE,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + time_budget_seconds if time_budget_seconds is not None else None
 
@@ -248,6 +250,7 @@ async def run_report(
         tier=tier,
         companies=company_refs,
         gaps=all_gaps,
+        audience=audience,
     )
 
     has_budget_cutoff = any(g["reason"] == "budget_cutoff" for g in all_gaps)

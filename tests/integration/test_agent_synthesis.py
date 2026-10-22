@@ -227,3 +227,124 @@ async def test_positioning_omitted_when_fewer_than_two_companies_are_placed(
 
     assert report_json["positioning"]["companies"] == []
     assert report_json["positioning"]["x_axis"] is None
+
+
+@pytest.mark.asyncio
+async def test_executive_brief_and_audience_implications_are_populated(
+    session: AsyncSession,
+) -> None:
+    """The executive brief and audience-implications section (ADR 0014)
+    ride inside the same synthesis call and claim-index resolution as
+    every other section — no new LLM call, same "omit if unsupported"
+    discipline."""
+    company, _claim = await _one_claim_company(
+        session, field="financials.revenue", value={"amount_usd": 40_000_000}
+    )
+    result = FrameworkSynthesisResult(
+        executive_brief=[
+            {
+                "statement": "Revenue grew sharply year over year.",
+                "why_it_matters": "Signals strong demand ahead of a funding round.",
+                "source_claim_indices": [0],
+            }
+        ],
+        audience_implications={
+            "relevance": "Growth rate matters directly for an investment thesis.",
+            "assumptions": ["Growth is organic, not acquisition-driven."],
+            "follow_up_questions": ["Is this growth rate sustainable next year?"],
+            "source_claim_indices": [0],
+        },
+    )
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+            audience="investor",
+        )
+
+    assert len(report_json["executive_brief"]) == 1
+    assert report_json["executive_brief"][0]["claim_ids"]
+    assert report_json["audience_implications"]["audience"] == "investor"
+    assert report_json["audience_implications"]["claim_ids"]
+    assert report_json["meta"]["audience"] == "investor"
+
+
+@pytest.mark.asyncio
+async def test_audience_implications_omitted_when_unsupported(session: AsyncSession) -> None:
+    """Interpretation without a claim behind it is invented, not honest —
+    omit the whole section rather than guess."""
+    company, _claim = await _one_claim_company(
+        session, field="financials.revenue", value={"amount_usd": 40_000_000}
+    )
+    result = FrameworkSynthesisResult(audience_implications=None)
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert report_json["audience_implications"] is None
+    assert report_json["executive_brief"] == []
+    assert report_json["meta"]["audience"] == "analyst"  # default when not specified
+
+
+def test_comparison_table_includes_populated_dimensions_and_drops_empty_ones() -> None:
+    """Deterministic reshape of existing CompanySnapshot data (ADR 0014) —
+    no new research, no new LLM call."""
+    from fieldbrief.agents.synthesis import _build_comparison_table
+
+    target_id = uuid.uuid4()
+    competitor_id = uuid.uuid4()
+    revenue_citation = {
+        "claim_ids": [str(uuid.uuid4())],
+        "confidence": {"score": 0.8, "corroboration": 1, "verified": True, "status": "supported"},
+    }
+    companies = [
+        CompanyRef(
+            company_id=target_id,
+            name="Target Co",
+            is_target=True,
+            snapshot={"revenue": revenue_citation, "description": None, "products": None},
+        ),
+        CompanyRef(
+            company_id=competitor_id,
+            name="Competitor Co",
+            is_target=False,
+            snapshot={"revenue": None, "description": None, "products": None},
+        ),
+    ]
+
+    table = _build_comparison_table(companies)
+
+    dimensions = {row["dimension"] for row in table["rows"]}
+    assert "revenue" in dimensions  # at least one company has a value
+    assert "description" not in dimensions  # no company has a value — dropped, not shown empty
+    revenue_row = next(row for row in table["rows"] if row["dimension"] == "revenue")
+    assert revenue_row["cells"][0]["citation"] == revenue_citation
+    assert revenue_row["cells"][1]["citation"] is None  # a clean gap, not an error

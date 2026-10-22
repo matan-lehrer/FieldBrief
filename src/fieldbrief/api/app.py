@@ -153,6 +153,7 @@ async def create_report_endpoint(
             tier=body.tier,
             status="queued",
             idempotency_key=idempotency_key,
+            audience=body.audience,
         )
         await session.commit()
 
@@ -175,6 +176,7 @@ async def get_report_endpoint(report_id: UUID) -> ReportOut:
             id=report.id,
             status=report.status,
             tier=report.tier,
+            audience=report.audience,
             target_company_id=report.target_company_id,
             report_json=report.report_json,
             cost_usd=float(report.cost_usd) if report.cost_usd is not None else None,
@@ -211,6 +213,7 @@ async def refresh_report(report_id: UUID) -> CreateReportResponse:
             tier=tier,
             status="queued",
             parent_report_id=old_report.id,
+            audience=old_report.audience,
         )
         await session.commit()
         new_report_id = new_report.id

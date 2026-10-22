@@ -141,6 +141,7 @@ REPORTS
   parent_report_id   uuid FK -> reports
   tier               enum (quick, standard, deep)
   status             enum (queued, running, done, partial, failed)
+  audience           enum (analyst, investor, leadership, competitor, sales_partnership)
   report_json        jsonb
   cost_usd           numeric
   created_at         timestamp
@@ -365,6 +366,7 @@ class ReportJSON(BaseModel):
 - Quick-tier reports simply have thinner `companies` and omit `vrio`/`market.size_growth`-derived content for fields outside their tier (field-checklist.md); the schema does not special-case tier, callers just see fewer populated fields and more `gaps`.
 - Framework sections (`five_forces`, `bmc`, `vrio`, `positioning`) default to empty/`None` rather than being required — a stage 3 (quick-tier, no competitors) report only populates `companies` and `swot`; stage 4 fills the rest. One schema, every tier and stage — never a separate "thin" schema that gets thrown away later.
 - This schema is the contract for stage 4 (frameworks + synthesis) and stage 7 (report rendering) — implementation lives in `reports/` per the planned layout (§13). Real implementation: `src/fieldbrief/reports/schema.py`.
+- **Post-stage-9 additions** (not reflected in the code block above — see the real implementation for the current shape): `ReportMeta.audience` (ADR 0014); `ReportJSON.executive_brief` (3-5 `ExecutiveFinding`s, each `statement` + `why_it_matters` + `claim_ids`, rendered first); `ReportJSON.comparison` (a `ComparisonTable` of `ComparisonRow`s, each a dimension label + one `ComparisonCell` — `company_id` + an optional `Citation` — per company, assembled deterministically from `companies`, no new research); `ReportJSON.audience_implications` (an optional `AudienceImplications`: `relevance` + `assumptions` + `follow_up_questions` + `claim_ids`, omitted entirely when unsupported). `Confidence` also gained `status` (v0.5.0, §3) and `ForceAssessment.force`/`rating` and `VRIOResource.competitive_implication` gained the ADR 0013 values.
 
 ---
 
@@ -450,6 +452,7 @@ DELETE /reports/{id}                          -> cancel / delete
 - `POST /reports` takes `{company_id, tier, competitor_count}`, not `{company_id, competitor_ids, tier}` — competitor discovery (ADR 0012) runs inside the worker's call to `run_report`, not as a client-driven pre-step with an edit UI, since that UI doesn't exist yet (stage 7). `competitor_ids` returns once it does.
 - SSE reads the progress exchange, but a worker finishing (mocked LLM calls are near-instant; so can a very short real report) before a client's queue is bound means that message is simply gone — AMQP topic exchanges don't replay to late subscribers. `GET /reports/{id}/events` binds its queue first, then falls back to the `Report` row's own status (checked immediately after bind, and again on every 5s of silence) so a client is guaranteed to reach a terminal state rather than hang on a "done" it missed. Found via the stage-6 integration test, which hit this race immediately with mocked (near-instant) work.
 - The worker declares the progress exchange itself on every `emit()` (idempotent, cheap) rather than assuming some consumer declared it first — a publish-only call never creates an exchange, so a worker with zero SSE clients connected would otherwise 404 on its very first progress event.
+- **Post-stage-9:** `POST /reports` also takes an optional `audience` (`analyst | investor | leadership | competitor | sales_partnership`, default `analyst` — ADR 0014), persisted on the `REPORTS` row and carried through to synthesis. `POST /reports/{id}/refresh` reuses the original report's `audience`, same as it reuses `competitor_count`.
 
 ---
 
@@ -561,6 +564,7 @@ Stage enum (`RESOLVING -> DISCOVERING -> RESEARCHING -> VALIDATING -> ANALYZING 
 - **Two-level fan-out** (company, then field within it); VRIO/BMC target-only; pre-warm needs no `report_id`. (ADR 0010)
 - **Competitor discovery is search-grounded**, not the model's own knowledge — every competitor traces back to a fetched page. (ADR 0012)
 - **VRIO organization changes the implication** (a 5th `unexploited_advantage` bucket), entry-barrier direction is unambiguous (renamed to `threat_of_new_entrants`), positioning requires real evidence per company, and Strengths/Weaknesses get the same internal free-judgment path Opportunities/Threats already had. (ADR 0013)
+- **Executive brief, a deterministic comparison table, and audience-aware implications** ride inside the existing single synthesis call — one shared research pass, audience only steers interpretation, never a second pipeline. (ADR 0014)
 - **Nodes pass IDs, not data** — any stage can become a service later; extract only stages with different resource needs (fetch, PDF).
 - **Latency:** cache hits, speculative start, pipelined stages, per-fetch timeouts, cost + time budgets, progressive rendering.
 - **Security:** fetched content is untrusted; strict-schema extraction only.

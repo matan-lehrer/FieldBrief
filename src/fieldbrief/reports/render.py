@@ -42,6 +42,8 @@ def collect_claim_ids(report_json: dict[str, Any]) -> set[str]:
             citation = company.get(key)
             if citation:
                 ids.update(citation["claim_ids"])
+    for finding in report_json.get("executive_brief", []):
+        ids.update(finding["claim_ids"])
     for force in report_json.get("five_forces", {}).get("forces", []):
         ids.update(force["claim_ids"])
     for block in report_json.get("bmc", {}).get("blocks", []):
@@ -53,8 +55,16 @@ def collect_claim_ids(report_json: dict[str, Any]) -> set[str]:
     for items in report_json.get("swot", {}).values():
         for item in items:
             ids.update(item["claim_ids"])
+    for row in report_json.get("comparison", {}).get("rows", []):
+        for cell in row["cells"]:
+            citation = cell.get("citation")
+            if citation:
+                ids.update(citation["claim_ids"])
     for rec in report_json.get("recommendations", []):
         ids.update(rec["claim_ids"])
+    implications = report_json.get("audience_implications")
+    if implications:
+        ids.update(implications["claim_ids"])
     return ids
 
 

@@ -18,6 +18,20 @@ from fieldbrief.agents.prompts import framework_synthesis_prompt
 from fieldbrief.db.models import Claim
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
+from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
+
+# Comparison dimensions (ADR 0014): CompanySnapshot fields that are
+# researched for both target and competitors (field-checklist.md's "light
+# subset," T,C-tagged rows) — a fair, evidence-backed shared comparison,
+# not a new research pass. Order here is display order.
+COMPARISON_DIMENSIONS: list[tuple[str, str]] = [
+    ("description", "What they do"),
+    ("products", "Main products"),
+    ("customer_segments", "Customer segments"),
+    ("revenue_model", "Revenue model"),
+    ("revenue", "Revenue"),
+    ("funding_or_cap", "Funding / market cap"),
+]
 
 
 class CompanyRef:
@@ -48,6 +62,21 @@ def _vrio_implication(valuable: bool, rare: bool, inimitable: bool, organized: b
     return "sustained_advantage"
 
 
+def _build_comparison_table(companies: list[CompanyRef]) -> dict[str, Any]:
+    """Pure reshape of already-synthesized CompanySnapshot data into a
+    dimension x company grid (ADR 0014) — no new research, no new LLM call.
+    A dimension with zero companies reporting a value is dropped entirely."""
+    rows = []
+    for key, label in COMPARISON_DIMENSIONS:
+        cells = [
+            {"company_id": str(c.company_id), "citation": c.snapshot.get(key)} for c in companies
+        ]
+        if not any(cell["citation"] for cell in cells):
+            continue
+        rows.append({"dimension": key, "label": label, "cells": cells})
+    return {"rows": rows}
+
+
 async def run_synthesis(
     *,
     session: AsyncSession,
@@ -57,6 +86,7 @@ async def run_synthesis(
     tier: str,
     companies: list[CompanyRef],
     gaps: list[dict[str, Any]],
+    audience: Audience = DEFAULT_AUDIENCE,
 ) -> dict[str, Any]:
     target = next(c for c in companies if c.is_target)
     company_ids = [c.company_id for c in companies]
@@ -76,12 +106,14 @@ async def run_synthesis(
     forces: list[dict[str, Any]] = []
     positioning: dict[str, Any] = {"x_axis": None, "y_axis": None, "companies": []}
     recommendations: list[dict[str, Any]] = []
+    executive_brief: list[dict[str, Any]] = []
+    audience_implications: dict[str, Any] | None = None
 
     if claims:
         company_tuples = [(c.company_id, c.name, c.is_target) for c in companies]
         result = await gateway.call(
             Task.SYNTHESIZE,
-            framework_synthesis_prompt(company_tuples, claims),
+            framework_synthesis_prompt(company_tuples, claims, audience=audience),
             FrameworkSynthesisResult,
             budget,
             report_id=str(report_id),
@@ -90,6 +122,29 @@ async def run_synthesis(
 
         def resolve_ids(indices: list[int]) -> list[str]:
             return [str(claims[i].id) for i in indices if 0 <= i < len(claims)]
+
+        for finding in result.executive_brief:
+            claim_ids = resolve_ids(finding.source_claim_indices)
+            if not claim_ids:
+                continue
+            executive_brief.append(
+                {
+                    "statement": finding.statement,
+                    "why_it_matters": finding.why_it_matters,
+                    "claim_ids": claim_ids,
+                }
+            )
+
+        if result.audience_implications is not None:
+            claim_ids = resolve_ids(result.audience_implications.source_claim_indices)
+            if claim_ids:
+                audience_implications = {
+                    "audience": audience,
+                    "relevance": result.audience_implications.relevance,
+                    "assumptions": result.audience_implications.assumptions,
+                    "follow_up_questions": result.audience_implications.follow_up_questions,
+                    "claim_ids": claim_ids,
+                }
 
         for force in result.five_forces:
             claim_ids = resolve_ids(force.source_claim_indices)
@@ -271,10 +326,12 @@ async def run_synthesis(
             "target_company_id": str(target.company_id),
             "competitor_ids": [str(c.company_id) for c in companies if not c.is_target],
             "tier": tier,
+            "audience": audience,
             "generated_at": datetime.now(UTC).isoformat(),
             "data_as_of": date.today().isoformat(),
         },
         "companies": [c.snapshot for c in companies],
+        "executive_brief": executive_brief,
         "five_forces": {"forces": forces, "freshness": None},
         "bmc": {"blocks": bmc_blocks, "freshness": None},
         "vrio": vrio,
@@ -285,7 +342,9 @@ async def run_synthesis(
             "opportunities": opportunities,
             "threats": threats,
         },
+        "comparison": _build_comparison_table(companies),
         "recommendations": recommendations,
+        "audience_implications": audience_implications,
         "gaps": gaps,
     }
     return report_json

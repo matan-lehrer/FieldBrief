@@ -224,13 +224,16 @@ async def create_report(
     status: str = "running",
     idempotency_key: str | None = None,
     parent_report_id: uuid.UUID | None = None,
+    audience: str = "analyst",
 ) -> Report:
     """`status` defaults to "running" — the CLI calls this immediately before
     starting the graph synchronously. The API passes status="queued" instead:
     the job hasn't started until a worker picks it up (design.md §8).
     `parent_report_id` links a refresh to the report it refreshed (design.md
     §4: reports are immutable, so refresh creates a new version, never
-    mutates the old one)."""
+    mutates the old one). `audience` is persisted here (not just a transient
+    job-message field) so a refresh can read it back, same reasoning as
+    competitor_count historically needed REPORT_COMPETITORS for."""
     report = Report(
         user_id=user_id,
         target_company_id=target_company_id,
@@ -238,6 +241,7 @@ async def create_report(
         status=status,
         idempotency_key=idempotency_key,
         parent_report_id=parent_report_id,
+        audience=audience,
     )
     session.add(report)
     await session.flush()
