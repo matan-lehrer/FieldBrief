@@ -16,3 +16,8 @@ search:
   formats:
     - html
     - json
+
+engines:
+  - name: bing
+    engine: bing
+    disabled: false

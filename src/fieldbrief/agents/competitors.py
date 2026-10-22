@@ -10,8 +10,13 @@ from fieldbrief.fetch.search import search
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 
-COMPETITOR_SEARCH_QUERIES = ["{name} competitors", "{name} alternatives", "{name} vs"]
-COMPETITOR_SEARCH_RESULTS_PER_QUERY = 4
+COMPETITOR_SEARCH_QUERIES = [
+    "{name} competitors",
+    "{name} alternatives",
+    "{name} vs",
+    "{name} compare",
+]
+COMPETITOR_SEARCH_RESULTS_PER_QUERY = 8
 
 
 class CompetitorCandidate(BaseModel):
