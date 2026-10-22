@@ -26,17 +26,18 @@
   .card.target { border-left: 3px solid var(--accent); }
   .field { margin: 11px 0; }
   .field-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
-  .citation { font-size: 13.5px; margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .citation-value { font-size: 14.5px; }
+  .citation { font-size: 12px; margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .citation .badge { margin-right: 0; }
-  .confidence { color: var(--muted); font-size: 11px; }
   .gap { color: var(--muted); font-style: italic; font-size: 13px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 11px;
     font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
-  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low, .badge.trust-high { background: var(--good-soft); color: var(--good); }
-  .badge.medium, .badge.parity, .badge.priority-medium, .badge.trust-medium { background: var(--warn-soft); color: var(--warn); }
-  .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.trust-low { background: var(--bad-soft); color: var(--bad); }
+  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low, .badge.status-strong, .badge.status-supported { background: var(--good-soft); color: var(--good); }
+  .badge.medium, .badge.parity, .badge.priority-medium, .badge.unexploited_advantage, .badge.status-unverified { background: var(--warn-soft); color: var(--warn); }
+  .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.status-conflicting { background: var(--bad-soft); color: var(--bad); }
+  .badge.insufficient_evidence { background: var(--line-soft); color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
   th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
@@ -126,7 +127,12 @@
     <button type="button" class="src-trigger" aria-haspopup="true">{{ items|length }} source{{ "s" if items|length != 1 else "" }}</button>
     <span class="src-panel">
       <ul>
-        {% for cl in items %}<li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}" target="_blank" rel="noopener">{{ cl.source_type }}</a></li>{% endfor %}
+        {% for cl in items %}
+        <li>
+          {% if cl.excerpt %}&ldquo;{{ cl.excerpt }}&rdquo; — {% endif %}
+          <a href="{{ cl.source_url }}" target="_blank" rel="noopener">{{ cl.publisher }}</a>{% if cl.published_at %}, {{ cl.published_at }}{% endif %}
+        </li>
+        {% endfor %}
       </ul>
     </span>
   </span>
@@ -135,11 +141,10 @@
 
 {% macro citation(c) %}
   {% if c %}
+    {% set primary = claims.get(c.claim_ids[0]) if c.claim_ids else None %}
+    {% if primary %}<div class="citation-value">{{ primary.statement }}</div>{% endif %}
     <div class="citation">
-      {% if c.confidence.score >= 0.8 %}<span class="badge trust-high">high trust</span>
-      {% elif c.confidence.score >= 0.5 %}<span class="badge trust-medium">medium trust</span>
-      {% else %}<span class="badge trust-low">low trust</span>{% endif %}
-      <span class="confidence">{{ "%.0f"|format(c.confidence.score * 100) }}%{% if c.confidence.verified %} · verified{% endif %}</span>
+      <span class="badge status-{{ c.confidence.status | default('supported') }}">{{ (c.confidence.status | default('supported')) | replace('_', ' ') }}</span>
       {{ sources_popover(c.claim_ids) }}
     </div>
   {% else %}
@@ -156,15 +161,31 @@
 </div>
 
 <nav class="section-nav" id="section-nav">
+  {% if report.executive_brief %}<a href="#brief" class="nav-link">Brief</a>{% endif %}
   <a href="#snapshot" class="nav-link">Snapshot</a>
   {% if report.five_forces.forces %}<a href="#five-forces" class="nav-link">Five Forces</a>{% endif %}
   {% if report.bmc.blocks %}<a href="#bmc" class="nav-link">Business Model</a>{% endif %}
   {% if report.vrio %}<a href="#vrio" class="nav-link">VRIO</a>{% endif %}
   {% if report.positioning.companies %}<a href="#positioning" class="nav-link">Positioning</a>{% endif %}
+  {% if report.comparison.rows %}<a href="#comparison" class="nav-link">Comparison</a>{% endif %}
   <a href="#swot" class="nav-link">SWOT</a>
   <a href="#recommendations" class="nav-link">Recommendations</a>
+  {% if report.audience_implications %}<a href="#implications" class="nav-link">Implications</a>{% endif %}
   {% if report.gaps %}<a href="#gaps" class="nav-link">Not found</a>{% endif %}
 </nav>
+
+{% if report.executive_brief %}
+<section id="brief">
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"/><path d="M8 7h8"/><path d="M8 11h8"/></svg></span>Executive brief</h2>
+{% for finding in report.executive_brief %}
+  <div class="card reveal">
+    <p><strong>{{ finding.statement }}</strong></p>
+    <p class="meta">{{ finding.why_it_matters }}</p>
+    {{ sources_popover(finding.claim_ids) }}
+  </div>
+{% endfor %}
+</section>
+{% endif %}
 
 <section id="snapshot">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 4v5"/></svg></span>Company snapshot</h2>
@@ -267,6 +288,24 @@
 </section>
 {% endif %}
 
+{% if report.comparison.rows %}
+<section id="comparison">
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>Comparison</h2>
+<table class="card reveal">
+  <tr><th>Dimension</th>{% for c in report.companies %}<th>{{ c.name }}</th>{% endfor %}</tr>
+  {% for row in report.comparison.rows %}
+  <tr>
+    <td>{{ row.label }}</td>
+    {% for c in report.companies %}
+      {% set cell = (row.cells | selectattr("company_id", "equalto", c.company_id) | first) %}
+      <td>{{ citation(cell.citation if cell else None) }}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</section>
+{% endif %}
+
 <section id="swot">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></span>SWOT</h2>
 <div class="grid-2">
@@ -300,6 +339,24 @@
 {% endfor %}
 {% if not report.recommendations %}<p class="gap">No recommendations yet.</p>{% endif %}
 </section>
+
+{% if report.audience_implications %}
+<section id="implications">
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5v.01"/></svg></span>Implications for {{ report.audience_implications.audience | replace("_", " ") }}</h2>
+<div class="card reveal">
+  <p>{{ report.audience_implications.relevance }}</p>
+  {% if report.audience_implications.assumptions %}
+  <p class="field-label">Assumptions</p>
+  <ul>{% for a in report.audience_implications.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if report.audience_implications.follow_up_questions %}
+  <p class="field-label">Follow-up questions</p>
+  <ul>{% for q in report.audience_implications.follow_up_questions %}<li>{{ q }}</li>{% endfor %}</ul>
+  {% endif %}
+  {{ sources_popover(report.audience_implications.claim_ids) }}
+</div>
+</section>
+{% endif %}
 
 {% if report.gaps %}
 <section id="gaps">

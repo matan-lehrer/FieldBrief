@@ -1,6 +1,6 @@
 [project]
 name = "fieldbrief"
-version = "0.8.0"
+version = "0.9.0"
 description = "AI-powered competitive analysis, built on real strategy frameworks."
 readme = "README.md"
 license = { text = "MIT" }
