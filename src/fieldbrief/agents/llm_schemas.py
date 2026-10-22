@@ -41,7 +41,10 @@ class ExtractedClaim(BaseModel):
         default=None,
         description=(
             "Only if this claim ALSO maps to a Business Model Canvas block (ADR 0009) — "
-            "independent of `field`, e.g. a financials.profitability claim might be cost_structure."
+            "independent of `field`. For cost_structure specifically: the claim must describe "
+            "what actually drives cost (e.g. 'cloud infrastructure is its largest expense', "
+            "'labor-intensive service delivery') — a bare margin/profitability number alone "
+            "is not cost-structure evidence."
         ),
     )
 
@@ -63,10 +66,15 @@ class ClaimVerification(BaseModel):
 
 class SWOTItemDraft(BaseModel):
     statement: str
-    derived_from: Literal["events", "market_size", "regulation", "bmc", "other"] = Field(
+    derived_from: Literal[
+        "events", "market_size", "regulation", "bmc", "financials", "risks", "other"
+    ] = Field(
         description=(
             "five_forces and vrio are never valid here — those SWOT items are derived "
-            "deterministically from your five_forces/vrio answers below, not authored directly."
+            "deterministically from your five_forces/vrio answers below, not authored directly. "
+            "Use 'financials' or 'risks' for an internal capability signal (e.g. shrinking "
+            "margins, customer concentration, a disclosed risk factor) rather than an external "
+            "market one."
         )
     )
     source_claim_indices: list[int] = Field(
@@ -83,8 +91,18 @@ class RecommendationDraft(BaseModel):
 
 
 class ForceAssessmentDraft(BaseModel):
-    force: Literal["buyer_power", "supplier_power", "substitutes", "entry_barriers", "rivalry"]
-    rating: Literal["low", "medium", "high"]
+    force: Literal[
+        "buyer_power", "supplier_power", "substitutes", "threat_of_new_entrants", "rivalry"
+    ]
+    rating: Literal["low", "medium", "high", "insufficient_evidence"] = Field(
+        description=(
+            "Pressure intensity on the company from this force — high is always bad for the "
+            "company. For threat_of_new_entrants specifically: high means entry is EASY (low "
+            "barriers), so new entrants are a real threat; low means barriers are high, so the "
+            "threat is low. Use insufficient_evidence if the claims mention this force but are "
+            "too thin to confidently call a direction — never guess a bucket."
+        )
+    )
     rationale: str
     source_claim_indices: list[int] = Field(min_length=1)
 
@@ -103,7 +121,11 @@ class PositionedCompanyDraft(BaseModel):
     company_index: int = Field(description="Index into the numbered companies list in the prompt")
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
-    source_claim_indices: list[int] = Field(default_factory=list)
+    source_claim_indices: list[int] = Field(
+        min_length=1,
+        description="Indices into the numbered claims list — never place a company with no "
+        "evidence behind its position; omit it instead.",
+    )
 
 
 class PositioningDraft(BaseModel):
@@ -119,6 +141,8 @@ class FrameworkSynthesisResult(BaseModel):
     five_forces: list[ForceAssessmentDraft] = Field(default_factory=list)
     vrio: list[VRIOResourceDraft] = Field(default_factory=list)
     positioning: PositioningDraft | None = None
+    other_strengths: list[SWOTItemDraft] = Field(default_factory=list)
+    other_weaknesses: list[SWOTItemDraft] = Field(default_factory=list)
     other_opportunities: list[SWOTItemDraft] = Field(default_factory=list)
     other_threats: list[SWOTItemDraft] = Field(default_factory=list)
     recommendations: list[RecommendationDraft] = Field(default_factory=list)
