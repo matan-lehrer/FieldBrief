@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from typing import Literal
 
 from fieldbrief.db.models import Claim, Source
@@ -18,21 +19,30 @@ CORROBORATION_BONUS_PER_SOURCE = 0.05
 CONFLICT_RELATIVE_TOLERANCE = 0.15
 
 
-def _numeric_value(claim: Claim) -> float | None:
-    for v in claim.value.values():
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return float(v)
-    return None
+def _numeric_values_by_key(claim: Claim) -> dict[str, float]:
+    return {
+        k: float(v)
+        for k, v in claim.value.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
 
 
 def _claims_conflict(claims: list[Claim]) -> bool:
-    values = [v for v in (_numeric_value(c) for c in claims) if v is not None]
-    if len(values) < 2:
-        return False
-    lo, hi = min(values), max(values)
-    if lo == 0:
-        return hi != 0
-    return (hi - lo) / abs(lo) > CONFLICT_RELATIVE_TOLERANCE
+    values_by_key: dict[str, list[float]] = defaultdict(list)
+    for claim in claims:
+        for key, value in _numeric_values_by_key(claim).items():
+            values_by_key[key].append(value)
+    for values in values_by_key.values():
+        if len(values) < 2:
+            continue
+        lo, hi = min(values), max(values)
+        if lo == 0:
+            if hi != 0:
+                return True
+            continue
+        if (hi - lo) / abs(lo) > CONFLICT_RELATIVE_TOLERANCE:
+            return True
+    return False
 
 
 def _evidence_status(*, verified: bool, corroboration: int, conflicting: bool) -> EvidenceStatus:

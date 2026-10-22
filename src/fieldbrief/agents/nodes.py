@@ -31,8 +31,6 @@ from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.confidence import compute_citation
 
-MAX_ATTEMPTS_PER_FIELD: dict[Tier, int] = {"quick": 1, "standard": 4, "deep": 6}
-
 FRESHNESS_MAX_AGE: dict[str, timedelta] = {
     "events.recent": timedelta(days=7),
     "financials.revenue": timedelta(days=365),
@@ -346,7 +344,7 @@ async def research_node(
 
 async def gap_check_node(state: GraphState, *, session: AsyncSession, tier: Tier) -> dict[str, Any]:
     company_id = uuid.UUID(state["company_id"])
-    max_attempts = MAX_ATTEMPTS_PER_FIELD[tier]
+    max_attempts = TIER_MAX_RETRY_ROUNDS[tier]
     remaining = []
     exhausted = list(state.get("exhausted_gaps", []))
     for gap in state["gaps"]:

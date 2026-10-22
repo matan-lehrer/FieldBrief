@@ -6,9 +6,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fieldbrief.agents.llm_schemas import FrameworkSynthesisResult
+from fieldbrief.agents.llm_schemas import FrameworkSynthesisResult, SWOTItemDraft
 from fieldbrief.agents.prompts import framework_synthesis_prompt
 from fieldbrief.db.models import Claim
+from fieldbrief.exceptions import BudgetExceededError
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
@@ -90,17 +91,22 @@ async def run_synthesis(
     recommendations: list[dict[str, Any]] = []
     executive_brief: list[dict[str, Any]] = []
     audience_implications: dict[str, Any] | None = None
+    synthesis_budget_cutoff = False
 
     if claims:
         company_tuples = [(c.company_id, c.name, c.is_target) for c in companies]
-        result = await gateway.call(
-            Task.SYNTHESIZE,
-            framework_synthesis_prompt(company_tuples, claims, audience=audience),
-            FrameworkSynthesisResult,
-            budget,
-            report_id=str(report_id),
-            stage="synthesize",
-        )
+        try:
+            result = await gateway.call(
+                Task.SYNTHESIZE,
+                framework_synthesis_prompt(company_tuples, claims, audience=audience),
+                FrameworkSynthesisResult,
+                budget,
+                report_id=str(report_id),
+                stage="synthesize",
+            )
+        except BudgetExceededError:
+            synthesis_budget_cutoff = True
+            result = FrameworkSynthesisResult()
 
         def resolve_ids(indices: list[int]) -> list[str]:
             return [str(claims[i].id) for i in indices if 0 <= i < len(claims)]
@@ -212,46 +218,22 @@ async def run_synthesis(
                     "companies": placed,
                 }
 
-        for item_draft in result.other_strengths:
-            claim_ids = resolve_ids(item_draft.source_claim_indices)
-            if claim_ids:
-                strengths.append(
-                    {
-                        "statement": item_draft.statement,
-                        "derived_from": item_draft.derived_from,
-                        "claim_ids": claim_ids,
-                    }
-                )
-        for item_draft in result.other_weaknesses:
-            claim_ids = resolve_ids(item_draft.source_claim_indices)
-            if claim_ids:
-                weaknesses.append(
-                    {
-                        "statement": item_draft.statement,
-                        "derived_from": item_draft.derived_from,
-                        "claim_ids": claim_ids,
-                    }
-                )
-        for item_draft in result.other_opportunities:
-            claim_ids = resolve_ids(item_draft.source_claim_indices)
-            if claim_ids:
-                opportunities.append(
-                    {
-                        "statement": item_draft.statement,
-                        "derived_from": item_draft.derived_from,
-                        "claim_ids": claim_ids,
-                    }
-                )
-        for item_draft in result.other_threats:
-            claim_ids = resolve_ids(item_draft.source_claim_indices)
-            if claim_ids:
-                threats.append(
-                    {
-                        "statement": item_draft.statement,
-                        "derived_from": item_draft.derived_from,
-                        "claim_ids": claim_ids,
-                    }
-                )
+        def append_swot_items(drafts: list[SWOTItemDraft], target: list[dict[str, Any]]) -> None:
+            for item_draft in drafts:
+                claim_ids = resolve_ids(item_draft.source_claim_indices)
+                if claim_ids:
+                    target.append(
+                        {
+                            "statement": item_draft.statement,
+                            "derived_from": item_draft.derived_from,
+                            "claim_ids": claim_ids,
+                        }
+                    )
+
+        append_swot_items(result.other_strengths, strengths)
+        append_swot_items(result.other_weaknesses, weaknesses)
+        append_swot_items(result.other_opportunities, opportunities)
+        append_swot_items(result.other_threats, threats)
 
         swot_combined = strengths + weaknesses + opportunities + threats
         for rec in result.recommendations:
@@ -299,6 +281,7 @@ async def run_synthesis(
             "audience": audience,
             "generated_at": datetime.now(UTC).isoformat(),
             "data_as_of": date.today().isoformat(),
+            "synthesis_budget_cutoff": synthesis_budget_cutoff,
         },
         "companies": [c.snapshot for c in companies],
         "executive_brief": executive_brief,

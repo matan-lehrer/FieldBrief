@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from enum import StrEnum
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import litellm
 from pydantic import BaseModel, ValidationError
@@ -61,21 +61,13 @@ class LLMGateway:
             if cached is not None:
                 return schema.model_validate_json(cached)
 
-        estimated_cost = _estimate_cost(model, messages)
-        budget.reserve(estimated_cost)
         await self._rate_limiter.acquire(provider)
 
         start = time.monotonic()
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            response_format=schema,
-            api_key=settings.llm_api_key,
-            num_retries=EXTRACT_NUM_RETRIES,
+        response, cost_usd = await _complete_with_budget(
+            model, messages, schema, budget, num_retries=EXTRACT_NUM_RETRIES
         )
         raw = response.choices[0].message.content
-        cost_usd = litellm.completion_cost(completion_response=response)
-        budget.settle(cost_usd - estimated_cost)
 
         try:
             result = schema.model_validate_json(raw)
@@ -127,23 +119,40 @@ class LLMGateway:
                 ),
             },
         ]
-        estimated_cost = _estimate_cost(model, repair_messages)
-        budget.reserve(estimated_cost)
-        response = await litellm.acompletion(
-            model=model,
-            messages=repair_messages,
-            response_format=schema,
-            api_key=settings.llm_api_key,
-            num_retries=REPAIR_NUM_RETRIES,
+        response, _ = await _complete_with_budget(
+            model, repair_messages, schema, budget, num_retries=REPAIR_NUM_RETRIES
         )
-        cost_usd = litellm.completion_cost(completion_response=response)
-        budget.settle(cost_usd - estimated_cost)
-
         raw = response.choices[0].message.content
         try:
             return schema.model_validate_json(raw)
         except ValidationError as exc:
             raise LLMCallError(f"repair retry still invalid: {exc}") from exc
+
+
+async def _complete_with_budget(
+    model: str,
+    messages: list[dict[str, str]],
+    schema: type[BaseModel],
+    budget: Budget,
+    *,
+    num_retries: int,
+) -> tuple[Any, float]:
+    estimated_cost = _estimate_cost(model, messages)
+    budget.reserve(estimated_cost)
+    try:
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            response_format=schema,
+            api_key=settings.llm_api_key,
+            num_retries=num_retries,
+        )
+    except Exception:
+        budget.settle(-estimated_cost)
+        raise
+    cost_usd = litellm.completion_cost(completion_response=response)
+    budget.settle(cost_usd - estimated_cost)
+    return response, cost_usd
 
 
 def _cache_key(model: str, messages: list[dict[str, str]], schema: type[BaseModel]) -> str:

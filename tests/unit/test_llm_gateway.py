@@ -139,6 +139,21 @@ async def test_call_raises_budget_exceeded_before_calling_llm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_call_releases_the_reservation_when_the_llm_call_fails() -> None:
+    gateway = LLMGateway()
+    budget = Budget(limit_usd=1.0)
+    mock_call = AsyncMock(side_effect=RuntimeError("provider outage"))
+
+    with (
+        patch("fieldbrief.llm.gateway.litellm.acompletion", new=mock_call),
+        pytest.raises(RuntimeError),
+    ):
+        await gateway.call(Task.EXTRACT, [{"role": "user", "content": "hi"}], Answer, budget)
+
+    assert budget.spent_usd == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
 async def test_deterministic_calls_are_cached() -> None:
     gateway = LLMGateway()
     budget = Budget(limit_usd=1.0)

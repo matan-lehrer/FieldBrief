@@ -157,6 +157,7 @@ async def get_covered_fields_from_source(
             Claim.company_id == company_id,
             Claim.source_id == source_id,
             Claim.field.in_(fields),
+            Claim.verified.is_(True),
         )
     )
     now = _utcnow()
