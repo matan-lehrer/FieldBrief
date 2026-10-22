@@ -9,8 +9,9 @@ report with one batched query before handing off to the template.
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import ChainableUndefined, Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,10 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 _env = Environment(
     loader=FileSystemLoader(TEMPLATES_DIR),
     autoescape=select_autoescape(["html"]),
+    # Reports stored before a report_json field existed (e.g. executive_brief,
+    # comparison, audience_implications) genuinely lack that key — chained
+    # access like report.comparison.rows must stay falsy, not raise.
+    undefined=ChainableUndefined,
 )
 
 _SNAPSHOT_CITATION_FIELDS = (
@@ -68,6 +73,18 @@ def collect_claim_ids(report_json: dict[str, Any]) -> set[str]:
     return ids
 
 
+def _publisher_label(source: Source) -> str:
+    """The real publisher, for the source hover/footnote — a title if the
+    page had one, else its domain. Never the claim's own generated text."""
+    if source.title:
+        return source.title
+    return urlparse(source.url).netloc.removeprefix("www.")
+
+
+def _published_date(source: Source) -> str | None:
+    return source.published_at.date().isoformat() if source.published_at else None
+
+
 async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[str, dict[str, Any]]:
     if not claim_ids:
         return {}
@@ -80,12 +97,82 @@ async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[s
     return {
         str(c.id): {
             "statement": c.statement,
+            "excerpt": c.snippet or None,
             "source_url": sources[c.source_id].url,
             "source_type": sources[c.source_id].source_type,
+            "publisher": _publisher_label(sources[c.source_id]),
+            "published_at": _published_date(sources[c.source_id]),
         }
         for c in claims
         if c.source_id in sources
     }
+
+
+def assign_source_numbers(
+    report_json: dict[str, Any], claims: dict[str, dict[str, Any]]
+) -> dict[str, int]:
+    """claim_id -> footnote number, assigned by first appearance in the same
+    order the PDF renders sections (print has no hover, so a source becomes
+    a numbered reference instead) — one number per distinct source URL, not
+    per claim, so several claims from the same page share a number."""
+    claim_number: dict[str, int] = {}
+    url_number: dict[str, int] = {}
+
+    def visit(ids: list[str]) -> None:
+        for cid in ids:
+            claim = claims.get(cid)
+            if claim is None:
+                continue
+            url = claim["source_url"]
+            if url not in url_number:
+                url_number[url] = len(url_number) + 1
+            claim_number[cid] = url_number[url]
+
+    for finding in report_json.get("executive_brief", []):
+        visit(finding["claim_ids"])
+    for company in report_json.get("companies", []):
+        for key in _SNAPSHOT_CITATION_FIELDS:
+            citation = company.get(key)
+            if citation:
+                visit(citation["claim_ids"])
+    for force in report_json.get("five_forces", {}).get("forces", []):
+        visit(force["claim_ids"])
+    for block in report_json.get("bmc", {}).get("blocks", []):
+        visit(block["claim_ids"])
+    for resource in report_json.get("vrio", []):
+        visit(resource["claim_ids"])
+    for placed in report_json.get("positioning", {}).get("companies", []):
+        visit(placed["claim_ids"])
+    for row in report_json.get("comparison", {}).get("rows", []):
+        for cell in row["cells"]:
+            citation = cell.get("citation")
+            if citation:
+                visit(citation["claim_ids"])
+    for items in report_json.get("swot", {}).values():
+        for item in items:
+            visit(item["claim_ids"])
+    for rec in report_json.get("recommendations", []):
+        visit(rec["claim_ids"])
+    implications = report_json.get("audience_implications")
+    if implications:
+        visit(implications["claim_ids"])
+    return claim_number
+
+
+def numbered_sources(
+    claims: dict[str, dict[str, Any]], claim_number: dict[str, int]
+) -> list[dict[str, Any]]:
+    by_number: dict[int, dict[str, Any]] = {}
+    for cid, number in claim_number.items():
+        if number not in by_number:
+            claim = claims[cid]
+            by_number[number] = {
+                "number": number,
+                "publisher": claim["publisher"],
+                "published_at": claim["published_at"],
+                "source_url": claim["source_url"],
+            }
+    return [by_number[n] for n in sorted(by_number)]
 
 
 def render_report_html(
@@ -106,23 +193,19 @@ def render_report_html(
 
 
 def render_pdf_html(
-    report_json: dict[str, Any], company_name: str, description: str | None = None
+    report_json: dict[str, Any], claims: dict[str, dict[str, Any]], company_name: str
 ) -> str:
-    """A separate, deliberately short template for the PDF export — the web
-    report's full per-company/BMC/VRIO/positioning detail doesn't fit on 1-2
-    pages and isn't what a PDF export is for; this is the synthesis
-    highlights only (Five Forces, SWOT, top recommendations) plus one line
-    of context on what the company actually is, no further citations."""
+    """Same report_json and resolved claims the web view uses — content
+    parity with /view, just a print-appropriate layout and numbered source
+    references instead of hover (print has no hover)."""
     template = _env.get_template("pdf_report.html")
-    meta = report_json.get("meta", {})
+    source_numbers = assign_source_numbers(report_json, claims)
     return template.render(
+        report=report_json,
+        claims=claims,
         company_name=company_name,
-        description=description,
-        tier=meta.get("tier", ""),
-        data_as_of=meta.get("data_as_of", ""),
-        forces=report_json.get("five_forces", {}).get("forces", []),
-        swot=report_json.get("swot", {}),
-        recommendations=report_json.get("recommendations", []),
+        source_numbers=source_numbers,
+        sources_list=numbered_sources(claims, source_numbers),
     )
 
 

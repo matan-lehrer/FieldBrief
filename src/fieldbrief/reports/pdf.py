@@ -1,7 +1,6 @@
-"""Report PDF: a short, Playwright-rendered HTML->PDF of the synthesis
-highlights (reports/render.py's render_pdf_html — not the full web report;
-see its docstring for why). Reports are immutable, so a rendered PDF never
-goes stale.
+"""Report PDF: Playwright-rendered HTML->PDF with the same content as the
+web report (reports/render.py's render_pdf_html). Reports are immutable, so
+a rendered PDF never goes stale.
 
 Needs Playwright's Chromium system shared libraries installed
 (`playwright install-deps chromium`, needs root) — verified working once

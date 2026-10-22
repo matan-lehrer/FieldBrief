@@ -369,28 +369,16 @@ async def view_report(
 @app.get("/reports/{report_id}/pdf", dependencies=[Depends(require_api_key)])
 async def report_pdf(report_id: UUID) -> Response:
     """design.md §9: "Reports are immutable, so a rendered PDF never goes
-    stale" — rendered on demand from the same immutable report_json every
-    time, not cached. A separate, deliberately short template from the web
-    report (render_pdf_html) — synthesis highlights only, built to fit 1-2
-    pages instead of the web view's full per-company/BMC/VRIO detail."""
+    stale" — rendered on demand every time, not cached. Same report_json and
+    resolved claims as /view (render_pdf_html), so the PDF has the same
+    content as the web page, just a print-appropriate layout."""
     async with SessionFactory() as session:
         report = await get_report(session, report_id)
         if report is None or report.status not in ("done", "partial") or report.report_json is None:
             raise HTTPException(status_code=404, detail="report not found or not finished")
         company = await session.get(Company, report.target_company_id)
-
-        description = None
-        target = next(
-            (c for c in report.report_json.get("companies", []) if c.get("is_target")), None
-        )
-        citation = target.get("description") if target else None
-        if citation and citation.get("claim_ids"):
-            claims = await build_claims_map(session, {citation["claim_ids"][0]})
-            resolved = claims.get(citation["claim_ids"][0])
-            description = resolved["statement"] if resolved else None
-
-        html = render_pdf_html(
-            report.report_json, company.name if company else "Report", description
-        )
+        claim_ids = collect_claim_ids(report.report_json)
+        claims = await build_claims_map(session, claim_ids)
+        html = render_pdf_html(report.report_json, claims, company.name if company else "Report")
     pdf_bytes = await render_report_pdf(html)
     return Response(content=pdf_bytes, media_type="application/pdf")
