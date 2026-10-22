@@ -62,3 +62,7 @@ A real run surfaced that "not found" was often wrong, not true — three dropped
 - `fetch/edgar.py` (SEC EDGAR: ticker→CIK→10-K/20-F/40-F) existed and was tested but was never called — financials for public companies (a CIK is known) now try the official filing first (`source_type="filing"`, `reports/confidence.py`'s top reliability tier) before falling back to scraped search results.
 - Corroboration (`reports/confidence.py`'s bonus for multiple independent sources) was effectively dead code: the research loop fetched exactly one URL per field group per retry round, and a retry round only fires while the gap stays open — one successful source always closed it before a second was ever tried. Financials and `market.forces` fields now fetch two independent search results in the same round.
 - Web report gained a High/Medium/Low trust badge per cited field (same underlying `Confidence.score`, now visible at a glance).
+
+## History page and logo (v0.3.0)
+- `GET /history` — the single MVP user's past reports, newest first (`Report.user_id` + the existing `ix_reports_user_created` index, zero new tables), each linking to `/view` and, when finished, `/pdf`. Linked from the home page and the finished-report topbar.
+- A small inline-SVG compass mark (no external file, no CDN — ADR 0003) next to the "FieldBrief" wordmark on every page, including the PDF export.

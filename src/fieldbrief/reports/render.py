@@ -127,3 +127,9 @@ def render_progress_html(report_id: uuid.UUID, api_key: str | None, company_name
 
 def render_failed_html(report_id: uuid.UUID, api_key: str | None) -> str:
     return _env.get_template("failed.html").render(report_id=str(report_id), api_key=api_key or "")
+
+
+def render_history_html(rows: list[dict[str, Any]], api_key: str | None) -> str:
+    """Rows are pre-assembled by the caller (api/app.py) — this file has no
+    DB access, same split as every other render_* function here."""
+    return _env.get_template("history.html").render(rows=rows, api_key=api_key or "")

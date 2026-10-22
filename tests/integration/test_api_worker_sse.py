@@ -409,3 +409,51 @@ async def test_home_page_renders_the_analyze_form() -> None:
         assert 'id="analyze-form"' in resp.text
         assert "/companies/resolve" in resp.text
         assert "/reports" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_history_lists_the_users_past_reports_newest_first() -> None:
+    """Report already has user_id + an index on (user_id, created_at) —
+    history needed zero new tables, just a list query and a page."""
+    domain = f"https://history-{uuid.uuid4().hex[:8]}.example.com/"
+    created_company_id: uuid.UUID | None = None
+    created_report_ids: list[uuid.UUID] = []
+
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company = await get_or_create_company(session, name="History Co", domain=domain)
+            created_company_id = company.id
+            older = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick", status="done"
+            )
+            await session.commit()  # own transaction, so created_at (Postgres now()) differs
+            newer = await create_report(
+                session,
+                user_id=user.id,
+                target_company_id=company.id,
+                tier="standard",
+                status="failed",
+            )
+            created_report_ids = [older.id, newer.id]
+            await session.commit()
+
+        transport = httpx.ASGITransport(app=fastapi_app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", headers={"X-API-Key": settings.api_key}
+        ) as client:
+            resp = await client.get("/history")
+            assert resp.status_code == 200
+            assert "History Co" in resp.text
+            # Newest first: the failed (newer) report's row comes before the done one's.
+            assert resp.text.index(str(newer.id)) < resp.text.index(str(older.id))
+    finally:
+        async with SessionFactory() as cleanup_session:
+            for report_id in created_report_ids:
+                await cleanup_session.execute(delete(Report).where(Report.id == report_id))
+            if created_company_id is not None:
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
+            await cleanup_session.commit()
+        await engine.dispose()

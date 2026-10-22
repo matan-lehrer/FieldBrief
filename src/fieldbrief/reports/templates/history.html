@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>History — FieldBrief</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .page { max-width: 880px; margin: 0 auto; padding: 0 32px 64px; }
+  h1 { font-size: 24px; margin: 28px 0 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
+  tr:last-child td { border-bottom: none; }
+  .links a { margin-right: 14px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="wordmark"><svg class="logo-mark" width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="16" cy="16" r="3.5" fill="currentColor"/><path d="M16 1v6M16 25v6M1 16h6M25 16h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>Field<span class="dot">Brief</span></a>
+  <div class="topbar-right"><a href="/">New analysis →</a></div>
+</div>
+<div class="page">
+  <h1>Your reports</h1>
+  {% if rows %}
+  <div class="card" style="padding: 4px 18px;">
+    <table>
+      <thead>
+        <tr><th>Company</th><th>Tier</th><th>Status</th><th>Created</th><th>Links</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.company_name }}</td>
+          <td>{{ row.tier | capitalize }}</td>
+          <td><span class="pill {{ 'good' if row.status in ('done', 'partial') else 'bad' if row.status == 'failed' else 'warn' }}">{{ row.status }}</span></td>
+          <td>{{ row.created_at }}</td>
+          <td class="links">
+            <a href="/reports/{{ row.report_id }}/view?api_key={{ api_key }}">View</a>
+            {% if row.status in ('done', 'partial') %}<a href="/reports/{{ row.report_id }}/pdf?api_key={{ api_key }}">PDF</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No reports yet — <a href="/">run your first analysis</a>.</p>
+  {% endif %}
+</div>
+</body>
+</html>
