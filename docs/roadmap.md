@@ -66,3 +66,8 @@ A real run surfaced that "not found" was often wrong, not true — three dropped
 ## History page and logo (v0.3.0)
 - `GET /history` — the single MVP user's past reports, newest first (`Report.user_id` + the existing `ix_reports_user_created` index, zero new tables), each linking to `/view` and, when finished, `/pdf`. Linked from the home page and the finished-report topbar.
 - A small inline-SVG compass mark (no external file, no CDN — ADR 0003) next to the "FieldBrief" wordmark on every page, including the PDF export.
+
+## Report page UX overhaul + a real SWOT gap (v0.4.0)
+Every real report run so far had `vrio: []` — confirmed across all 5 finished reports in the DB. `agents/synthesis.py`'s ADR-0009 roll-up derives Strengths/Weaknesses *only* from VRIO, and VRIO only from `resources.advantages` claims, which shared one search query/page with `market.forces` in `agents/nodes.py`'s `SEARCH_GROUPS` — a page about industry dynamics but no named resource left VRIO (and S/W) empty every time. Split into two independent search groups.
+- `report.html`: sources are now a hover/click/focus popover trigger (`N sources`) instead of an always-visible list under every single cited item — the biggest single source of page clutter. A sticky in-page nav (only linking to sections the report actually has) with scroll-spy highlighting. Scroll-triggered reveal animation on every card/section (respects `prefers-reduced-motion`). The positioning chart's points animate in with a stagger when it scrolls into view.
+- `pdf_report.html` gained a one-line company description under the title (resolved via the same claims-map pattern as the web report) — previously zero context on what the company *is* before the frameworks; still re-verified at 1 page against a real report.

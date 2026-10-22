@@ -1,6 +1,6 @@
 import uuid
 
-from fieldbrief.reports.render import collect_claim_ids, render_report_html
+from fieldbrief.reports.render import collect_claim_ids, render_pdf_html, render_report_html
 
 CID1 = str(uuid.uuid4())
 CID2 = str(uuid.uuid4())
@@ -91,6 +91,27 @@ def test_render_report_html_includes_company_name_and_gap() -> None:
     assert "{{" not in html and "{%" not in html
 
 
+def test_render_report_html_has_section_nav_and_source_popover() -> None:
+    """UX overhaul: sources are a hover/click trigger, not an always-visible
+    list, and each present section gets a sticky nav anchor."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    claims = {
+        CID1: {
+            "statement": "Acme makes widgets.",
+            "source_url": "https://acme.com",
+            "source_type": "official",
+        }
+    }
+
+    html = render_report_html(report, claims, "Acme Corp")
+
+    assert '<section id="snapshot">' in html
+    assert 'href="#snapshot"' in html
+    assert "1 source" in html  # the popover trigger, not an always-visible list
+    assert "Acme makes widgets." in html  # still in the DOM, inside the popover
+
+
 def test_render_report_html_shows_not_found_for_missing_citation() -> None:
     target_id = str(uuid.uuid4())
     report = _minimal_report(target_id)
@@ -99,3 +120,21 @@ def test_render_report_html_shows_not_found_for_missing_citation() -> None:
     html = render_report_html(report, {}, "Acme Corp")
 
     assert "not found" in html
+
+
+def test_render_pdf_html_includes_description_when_given() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+
+    html = render_pdf_html(report, "Acme Corp", "Acme makes widgets for small businesses.")
+
+    assert "Acme makes widgets for small businesses." in html
+
+
+def test_render_pdf_html_omits_description_block_when_none() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+
+    html = render_pdf_html(report, "Acme Corp", None)
+
+    assert '<p class="desc">' not in html

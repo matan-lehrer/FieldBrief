@@ -375,6 +375,19 @@ async def report_pdf(report_id: UUID) -> Response:
         if report is None or report.status not in ("done", "partial") or report.report_json is None:
             raise HTTPException(status_code=404, detail="report not found or not finished")
         company = await session.get(Company, report.target_company_id)
-        html = render_pdf_html(report.report_json, company.name if company else "Report")
+
+        description = None
+        target = next(
+            (c for c in report.report_json.get("companies", []) if c.get("is_target")), None
+        )
+        citation = target.get("description") if target else None
+        if citation and citation.get("claim_ids"):
+            claims = await build_claims_map(session, {citation["claim_ids"][0]})
+            resolved = claims.get(citation["claim_ids"][0])
+            description = resolved["statement"] if resolved else None
+
+        html = render_pdf_html(
+            report.report_json, company.name if company else "Report", description
+        )
     pdf_bytes = await render_report_pdf(html)
     return Response(content=pdf_bytes, media_type="application/pdf")

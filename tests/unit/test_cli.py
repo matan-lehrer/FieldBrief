@@ -14,7 +14,7 @@ def test_help() -> None:
 def test_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.3.0"
+    assert result.stdout.strip() == "0.4.0"
 
 
 def test_analyze_rejects_invalid_tier_without_any_io() -> None:

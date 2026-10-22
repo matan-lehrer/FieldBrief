@@ -95,15 +95,19 @@ def render_report_html(
     )
 
 
-def render_pdf_html(report_json: dict[str, Any], company_name: str) -> str:
+def render_pdf_html(
+    report_json: dict[str, Any], company_name: str, description: str | None = None
+) -> str:
     """A separate, deliberately short template for the PDF export — the web
     report's full per-company/BMC/VRIO/positioning detail doesn't fit on 1-2
     pages and isn't what a PDF export is for; this is the synthesis
-    highlights only (Five Forces, SWOT, top recommendations), no citations."""
+    highlights only (Five Forces, SWOT, top recommendations) plus one line
+    of context on what the company actually is, no further citations."""
     template = _env.get_template("pdf_report.html")
     meta = report_json.get("meta", {})
     return template.render(
         company_name=company_name,
+        description=description,
         tier=meta.get("tier", ""),
         data_as_of=meta.get("data_as_of", ""),
         forces=report_json.get("five_forces", {}).get("forces", []),
