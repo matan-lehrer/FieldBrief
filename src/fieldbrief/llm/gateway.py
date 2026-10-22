@@ -1,10 +1,4 @@
-"""The LLM gateway — the only path to any LLM (CLAUDE.md "Agent and LLM rules").
-
-Implements design.md "LLM gateway": route task+tier -> model, response cache
-for deterministic tasks, budget check, per-provider rate limit, call via
-LiteLLM with retries, validate into the caller's Pydantic schema with one
-repair retry, settle actual cost, log tokens/$/latency, return a typed object.
-"""
+"""The LLM gateway — the only path to any LLM call in the codebase."""
 
 import hashlib
 import json
@@ -17,6 +11,8 @@ import litellm
 from pydantic import BaseModel, ValidationError
 
 from fieldbrief.config import settings
+from fieldbrief.consts import EXTRACT_NUM_RETRIES, REPAIR_NUM_RETRIES
+from fieldbrief.exceptions import LLMCallError
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.rate_limit import ProviderRateLimiter
 
@@ -26,9 +22,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class Task(StrEnum):
-    """What kind of call this is — determines the model tier (CLAUDE.md:
-    cheap model for extraction/verification, strong model for synthesis only,
-    never in a loop)."""
+    """Cheap model for extraction/verification, strong model for synthesis."""
 
     EXTRACT = "extract"
     VERIFY = "verify"
@@ -42,14 +36,8 @@ TASK_TIER: dict[Task, str] = {
 }
 
 
-class LLMCallError(Exception):
-    """The call failed even after the gateway's retry/repair attempts."""
-
-
 class LLMGateway:
     def __init__(self, rate_limiter: ProviderRateLimiter | None = None) -> None:
-        # Response cache for deterministic tasks (design.md step 2). In-process,
-        # per-gateway-instance — a shared cache is scale-path work, not MVP.
         self._cache: dict[str, str] = {}
         self._rate_limiter = rate_limiter or ProviderRateLimiter()
 
@@ -87,12 +75,10 @@ class LLMGateway:
             messages=messages,
             response_format=schema,
             api_key=settings.llm_api_key,
-            num_retries=2,  # covers 429/5xx with LiteLLM's built-in backoff+jitter
+            num_retries=EXTRACT_NUM_RETRIES,
         )
         raw = response.choices[0].message.content
-        # Settled the instant the real cost is known, regardless of whether
-        # the JSON below turns out valid — the call happened and cost money
-        # either way; a repair call (if needed) accounts for its own cost.
+        # The call cost money whether or not the JSON below is valid.
         cost_usd = litellm.completion_cost(completion_response=response)
         budget.settle(cost_usd - estimated_cost)
 
@@ -135,11 +121,8 @@ class LLMGateway:
         *,
         budget: Budget,
     ) -> T:
-        """design.md step 6: "one repair retry." If this also fails, the error
-        propagates — the caller (a graph node) treats it as a gap, per ADR 0010.
-        A real provider call either way, so it's budget-checked and settled
-        just like the original call — it used to be neither, making repairs
-        effectively free and uncapped."""
+        """One repair retry; if this also fails, the error propagates and
+        the caller treats it as a gap."""
         repair_messages = [
             *messages,
             {"role": "assistant", "content": bad_output},
@@ -158,7 +141,7 @@ class LLMGateway:
             messages=repair_messages,
             response_format=schema,
             api_key=settings.llm_api_key,
-            num_retries=1,
+            num_retries=REPAIR_NUM_RETRIES,
         )
         cost_usd = litellm.completion_cost(completion_response=response)
         budget.settle(cost_usd - estimated_cost)
@@ -177,17 +160,19 @@ def _cache_key(model: str, messages: list[dict[str, str]], schema: type[BaseMode
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_CHARS_PER_TOKEN_ESTIMATE = 4
+_COMPLETION_TO_PROMPT_RATIO_ESTIMATE = 3
+
+
 def _estimate_cost(model: str, messages: list[dict[str, str]]) -> float:
-    """Pre-call estimate for the budget check — approximate on purpose (actual
-    cost is settled from real usage after the call). ~4 chars/token is a
-    standard rough estimate; good enough for a stop-before-overspend guard."""
+    """Pre-call estimate for the budget reservation; actual cost is settled
+    from real usage after the call."""
     char_count = sum(len(m.get("content", "")) for m in messages)
-    estimated_prompt_tokens = max(1, char_count // 4)
+    estimated_prompt_tokens = max(1, char_count // _CHARS_PER_TOKEN_ESTIMATE)
     pricing = litellm.model_cost.get(model, {})
     input_cost_per_token = float(pricing.get("input_cost_per_token", 0.0))
     output_cost_per_token = float(pricing.get("output_cost_per_token", 0.0))
-    # Assume completion is roughly a third of the prompt size for estimation.
-    estimated_completion_tokens = estimated_prompt_tokens // 3
+    estimated_completion_tokens = estimated_prompt_tokens // _COMPLETION_TO_PROMPT_RATIO_ESTIMATE
     return (
         estimated_prompt_tokens * input_cost_per_token
         + estimated_completion_tokens * output_cost_per_token

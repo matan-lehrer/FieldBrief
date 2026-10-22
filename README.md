@@ -94,6 +94,3 @@ Every roadmap stage through 8 is built with real integration tests against the a
 
 ## Evals
 The golden-set harness (`evals/harness.py`) and all 10 researched ground-truth files (`evals/golden/*.yaml`) are built — see [ADR 0011](docs/adr/0011-eval-plan.md). Results aren't published yet; run `uv run python evals/harness.py` (needs `LLM_API_KEY` and the compose stack up) to generate `evals/results/<date>.md`.
-
-## License
-MIT

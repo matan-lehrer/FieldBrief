@@ -1,6 +1,7 @@
 import pytest
 
-from fieldbrief.llm.budget import Budget, BudgetExceededError
+from fieldbrief.exceptions import BudgetExceededError
+from fieldbrief.llm.budget import Budget
 
 
 def test_check_passes_within_budget() -> None:

@@ -1,14 +1,12 @@
 """Company entity resolution via Wikidata.
 
-design.md §9 data flow step 1: "Resolve — query -> candidates (Wikidata, aliases) -> user confirms".
-
-Property IDs verified live against real entities (2026-10-21):
+Property IDs used here:
 - P856  official website
 - P452  industry (value is an item; resolved to a label with a second lookup)
 - P414  stock exchange, qualified by P249 (ticker symbol) — the ticker is a
         *qualifier* on the exchange claim, not a top-level property.
-- P5531 SEC Central Index Key (CIK) — present on SEC filers (verified on Apple,
-        Q312), absent on many others. Missing is a legitimate "not found", not a bug.
+- P5531 SEC Central Index Key (CIK) — present on SEC filers, absent on many
+        others. Missing is a legitimate "not found", not a bug.
 """
 
 from typing import Any
@@ -18,10 +16,8 @@ from pydantic import BaseModel
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
-# P31 (instance of) values that mark a candidate as business-like, not a place/
-# person/other entity that happens to share a label (the Wix village/surname/
-# company collision ADR 0011 calls out by name). Verified live (2026-10-21)
-# against Wix.com (Q420506 -> business, enterprise, public company).
+# P31 (instance of) values that mark a candidate as business-like, not a
+# place/person/other entity that happens to share a label (ADR 0011).
 COMPANY_LIKE_CLASSES = {
     "Q4830453",  # business
     "Q6881511",  # enterprise

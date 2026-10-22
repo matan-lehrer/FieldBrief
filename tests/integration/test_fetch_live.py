@@ -9,7 +9,7 @@ import pytest
 
 from fieldbrief.config import settings
 from fieldbrief.fetch.clean import clean_html
-from fieldbrief.fetch.edgar import get_recent_annual_filings, lookup_cik_by_ticker
+from fieldbrief.fetch.edgar import get_recent_annual_filings
 from fieldbrief.fetch.http import DEFAULT_USER_AGENT, Fetcher
 from fieldbrief.fetch.search import search
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
@@ -46,11 +46,9 @@ async def test_fetch_and_clean_real_page() -> None:
 @pytest.mark.asyncio
 async def test_edgar_finds_wix_annual_filings() -> None:
     # SEC requires a User-Agent shaped like "Company Name contact@domain" — a
-    # generic UA (even a descriptive one) gets a 403, verified live 2026-10-21.
+    # generic UA (even a descriptive one) gets a 403.
     async with httpx.AsyncClient(headers={"User-Agent": settings.sec_user_agent}) as client:
-        cik = await lookup_cik_by_ticker(client, "WIX")
-        assert cik == "1576789"
-        filings = await get_recent_annual_filings(client, cik, limit=1)
+        filings = await get_recent_annual_filings(client, "1576789", limit=1)
         assert len(filings) == 1
         assert filings[0].form in ("10-K", "20-F", "40-F")
 

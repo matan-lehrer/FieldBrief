@@ -4,8 +4,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import BaseModel
 
-from fieldbrief.llm.budget import Budget, BudgetExceededError
-from fieldbrief.llm.gateway import LLMCallError, LLMGateway, Task
+from fieldbrief.exceptions import BudgetExceededError, LLMCallError
+from fieldbrief.llm.budget import Budget
+from fieldbrief.llm.gateway import LLMGateway, Task
 
 
 class Answer(BaseModel):

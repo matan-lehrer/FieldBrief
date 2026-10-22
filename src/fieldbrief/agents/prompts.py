@@ -50,13 +50,7 @@ def _extraction_keywords(company_name: str, fields: list[str]) -> set[str]:
 
 def extraction_prompt(company_name: str, page_text: str, fields: list[str]) -> list[dict[str, str]]:
     field_list = "\n".join(f"- {f}: {FIELD_DESCRIPTIONS.get(f, f)}" for f in fields)
-    # Bounded, relevance-ranked passage selection instead of a blind head
-    # slice (`page_text[:8000]`) — a claim three screens down the page used
-    # to never reach the model at all, regardless of how clearly it answered
-    # one of the requested fields.
-    bounded_text = select_relevant_passages(
-        page_text, _extraction_keywords(company_name, fields), max_chars=8000
-    )
+    bounded_text = select_relevant_passages(page_text, _extraction_keywords(company_name, fields))
     system = (
         "You extract factual claims about ONE company from a web page. Only extract "
         "a claim if the page text actually supports it — never invent or guess. If "
