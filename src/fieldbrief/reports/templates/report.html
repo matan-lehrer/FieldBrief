@@ -2,64 +2,79 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ company_name }} — FieldBrief report</title>
+<link rel="stylesheet" href="/static/style.css">
 <style>
   :root {
-    --ink: #1a1d23; --muted: #5b6270; --line: #e2e5ea; --bg: #ffffff; --panel: #f7f8fa;
-    --low: #1f8a4c; --medium: #b8860b; --high: #c0392b;
-    --strength: #1f8a4c; --weakness: #c0392b; --opportunity: #2563a8; --threat: #b8860b;
+    --low: var(--good); --medium: var(--warn); --high: var(--bad);
+    --strength: var(--good); --weakness: var(--bad); --opportunity: #2563a8; --threat: var(--warn);
   }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-         color: var(--ink); background: var(--bg); margin: 0; padding: 32px; line-height: 1.5; }
-  .page { max-width: 880px; margin: 0 auto; }
-  h1 { font-size: 28px; margin: 0 0 4px; }
-  h2 { font-size: 19px; margin: 36px 0 12px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
-  h3 { font-size: 15px; margin: 0 0 4px; }
-  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-  .card.target { border-left: 4px solid var(--opportunity); }
-  .field { margin: 10px 0; }
-  .field-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
-  .citation { font-size: 13px; margin-top: 2px; }
+  body { padding-bottom: 64px; }
+  .page { max-width: 880px; margin: 0 auto; padding: 0 32px; }
+  .report-header { padding: 28px 0 8px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 40px 0 14px; display: flex; align-items: center; gap: 9px; }
+  h2 .section-icon { width: 20px; height: 20px; border-radius: 6px; background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  h2 .section-icon svg { width: 13px; height: 13px; }
+  h3 { font-size: 14.5px; margin: 0 0 4px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+  .card { padding: 16px 18px; margin-bottom: 12px; }
+  .card.target { border-left: 3px solid var(--accent); }
+  .field { margin: 11px 0; }
+  .field-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  .citation { font-size: 13.5px; margin-top: 3px; }
   .confidence { color: var(--muted); font-size: 11px; }
   .sources { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
   .sources a { color: inherit; }
   .gap { color: var(--muted); font-style: italic; font-size: 13px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
-  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage { background: var(--low); }
-  .badge.medium, .badge.parity { background: var(--medium); }
-  .badge.high, .badge.competitive_disadvantage { background: var(--high); }
-  .badge.priority-high { background: var(--high); }
-  .badge.priority-medium { background: var(--medium); }
-  .badge.priority-low { background: var(--low); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
-  .swot-quad { border-radius: 8px; padding: 14px; }
-  .swot-quad.strengths { background: color-mix(in srgb, var(--strength) 8%, white); }
-  .swot-quad.weaknesses { background: color-mix(in srgb, var(--weakness) 8%, white); }
-  .swot-quad.opportunities { background: color-mix(in srgb, var(--opportunity) 8%, white); }
-  .swot-quad.threats { background: color-mix(in srgb, var(--threat) 8%, white); }
-  .swot-quad h3 { margin-bottom: 8px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 11px;
+    font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low { background: var(--good-soft); color: var(--good); }
+  .badge.medium, .badge.parity, .badge.priority-medium { background: var(--warn-soft); color: var(--warn); }
+  .badge.high, .badge.competitive_disadvantage, .badge.priority-high { background: var(--bad-soft); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
+  tr:last-child td { border-bottom: none; }
+  .swot-quad { border-radius: var(--radius); padding: 16px 18px; border: 1px solid var(--line); }
+  .swot-quad.strengths { border-left: 3px solid var(--strength); }
+  .swot-quad.weaknesses { border-left: 3px solid var(--weakness); }
+  .swot-quad.opportunities { border-left: 3px solid var(--opportunity); }
+  .swot-quad.threats { border-left: 3px solid var(--threat); }
+  .swot-quad h3 { margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
   .swot-quad ul { margin: 0; padding-left: 18px; }
-  .swot-quad li { margin-bottom: 8px; }
-  .chart { position: relative; width: 100%; aspect-ratio: 1; background: var(--panel); border: 1px solid var(--line);
-           border-radius: 8px; margin-bottom: 4px; }
+  .swot-quad li { margin-bottom: 9px; font-size: 13.5px; }
+  .chart { position: relative; width: 100%; aspect-ratio: 1; background:
+    linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
+    var(--surface-2);
+    background-size: 25% 25%, 25% 25%; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 4px; }
   .chart .axis-label { position: absolute; font-size: 11px; color: var(--muted); }
-  .chart .axis-label.x-low { left: 8px; bottom: 8px; } .chart .axis-label.x-high { right: 8px; bottom: 8px; }
-  .chart .axis-label.y-low { left: 8px; bottom: 8px; writing-mode: vertical-rl; } .chart .axis-label.y-high { left: 8px; top: 8px; writing-mode: vertical-rl; }
-  .chart .point { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--opportunity);
-                  transform: translate(-50%, 50%); }
-  .chart .point.target { background: var(--high); }
-  .chart .point-label { position: absolute; font-size: 11px; transform: translate(-50%, 130%); white-space: nowrap; }
+  .chart .axis-label.x-low { left: 10px; bottom: 10px; } .chart .axis-label.x-high { right: 10px; bottom: 10px; }
+  .chart .axis-label.y-low { left: 10px; bottom: 10px; writing-mode: vertical-rl; } .chart .axis-label.y-high { left: 10px; top: 10px; writing-mode: vertical-rl; }
+  .chart .point { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: var(--opportunity);
+                  border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-50%, 50%); }
+  .chart .point.target { background: var(--accent); width: 14px; height: 14px; }
+  .chart .point-label { position: absolute; font-size: 11.5px; font-weight: 600; transform: translate(-50%, 130%); white-space: nowrap; }
   .gaps-list { font-size: 13px; color: var(--muted); }
-  @media print { body { padding: 0; } .page { max-width: none; } }
+  @media print {
+    .topbar, .report-actions { display: none; }
+    body { padding: 0; }
+    .page { max-width: none; }
+  }
 </style>
 </head>
 <body>
+<div class="topbar report-actions">
+  <a href="/" class="wordmark">Field<span class="dot">Brief</span></a>
+  <div class="topbar-right">
+    {% if report_id %}<a href="/reports/{{ report_id }}/pdf{% if api_key %}?api_key={{ api_key }}{% endif %}">Download PDF</a>{% endif %}
+    <a href="/">New analysis →</a>
+  </div>
+</div>
 <div class="page">
 
 {% macro citation(c) %}
@@ -85,13 +100,15 @@
   </ul>
 {% endmacro %}
 
-<h1>{{ company_name }}</h1>
-<div class="meta">
-  {{ report.meta.tier | capitalize }} report · data as of {{ report.meta.data_as_of }} ·
-  generated {{ report.meta.generated_at }}
+<div class="report-header">
+  <h1>{{ company_name }}</h1>
+  <div class="meta">
+    {{ report.meta.tier | capitalize }} report · data as of {{ report.meta.data_as_of }} ·
+    generated {{ report.meta.generated_at }}
+  </div>
 </div>
 
-<h2>Company snapshot</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 4v5"/></svg></span>Company snapshot</h2>
 {% for c in report.companies %}
   <div class="card {{ 'target' if c.is_target else '' }}">
     <h3>{{ c.name }}{% if c.is_target %} (target){% endif %}</h3>
@@ -113,7 +130,7 @@
 {% endfor %}
 
 {% if report.five_forces.forces %}
-<h2>Five Forces</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M2 12h4"/><path d="M18 12h4"/></svg></span>Five Forces</h2>
 <div class="grid-2">
   {% for f in report.five_forces.forces %}
     <div class="card">
@@ -126,7 +143,7 @@
 {% endif %}
 
 {% if report.bmc.blocks %}
-<h2>Business Model Canvas</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Business Model Canvas</h2>
 <div class="grid-3">
   {% for b in report.bmc.blocks %}
     <div class="card">
@@ -139,7 +156,7 @@
 {% endif %}
 
 {% if report.vrio %}
-<h2>VRIO</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l9 4.5v9L12 20l-9-4.5v-9z"/></svg></span>VRIO</h2>
 <table>
   <tr><th>Resource</th><th>V</th><th>R</th><th>I</th><th>O</th><th>Implication</th><th>Rationale</th></tr>
   {% for r in report.vrio %}
@@ -157,7 +174,7 @@
 {% endif %}
 
 {% if report.positioning.companies %}
-<h2>Positioning</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="7" cy="17" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="14" cy="14" r="2"/><path d="M3 21h18"/><path d="M3 3v18"/></svg></span>Positioning</h2>
 <div class="chart">
   <span class="axis-label x-low">{{ report.positioning.x_axis.low_label }}</span>
   <span class="axis-label x-high">{{ report.positioning.x_axis.high_label }}</span>
@@ -173,7 +190,7 @@
 <p class="meta">{{ report.positioning.x_axis.name }} (x) vs. {{ report.positioning.y_axis.name }} (y)</p>
 {% endif %}
 
-<h2>SWOT</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></span>SWOT</h2>
 <div class="grid-2">
   <div class="swot-quad strengths"><h3>Strengths</h3><ul>
     {% for item in report.swot.strengths %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
@@ -193,7 +210,7 @@
   </ul></div>
 </div>
 
-<h2>Recommendations</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Recommendations</h2>
 {% for rec in report.recommendations %}
   <div class="card">
     <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span></h3>
@@ -204,7 +221,7 @@
 {% if not report.recommendations %}<p class="gap">No recommendations yet.</p>{% endif %}
 
 {% if report.gaps %}
-<h2>Not found</h2>
+<h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span>Not found</h2>
 <p class="gaps-list">
   {% for g in report.gaps %}
     {{ g.field }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}

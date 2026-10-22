@@ -4,7 +4,7 @@ AI-powered competitive analysis, built on real strategy frameworks. A company na
 
 Portfolio project by Matan Lehrer (backend/AI engineer, MBA). Target bar: senior to staff level.
 
-**Current stage:** 8 — Polish and ship (refresh endpoint, README, design/ADR consistency pass all built and tested). See `docs/roadmap.md`. Stages 0-8 are built and tested; the one thing not yet done is running the agent pipeline against a real LLM (needs `LLM_API_KEY`) and taking the stage 7/8 screenshot that depends on it — no browser/Chromium available in this dev environment. Design decisions live in `docs/design.md` and `docs/adr/`.
+**Current stage:** 9 — Self-serve demo UI (landing page, polished live-progress/report pages, a real fix for an infinite-reload bug on failed reports). Not in the original plan — added once a real end-to-end run on stage 8 surfaced both gaps. See `docs/roadmap.md`. Stages 0-9 are built and tested; the one thing not yet done is a real, successful end-to-end report (Flash extraction/verification has run live against real Gemini; the final synthesis call needs Pro-tier billing enabled on the Google Cloud project) and the stage 7 screenshot that depends on it — no browser/Chromium available in this dev environment. Design decisions live in `docs/design.md` and `docs/adr/`.
 
 ## Read first
 - `docs/design.md` — requirements, NFRs, entities, tables, API, data flow, architecture. Source of truth.

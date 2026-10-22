@@ -79,7 +79,34 @@ async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[s
 
 
 def render_report_html(
-    report_json: dict[str, Any], claims: dict[str, dict[str, Any]], company_name: str
+    report_json: dict[str, Any],
+    claims: dict[str, dict[str, Any]],
+    company_name: str,
+    report_id: uuid.UUID | None = None,
+    api_key: str | None = None,
 ) -> str:
     template = _env.get_template("report.html")
-    return template.render(report=report_json, claims=claims, company_name=company_name)
+    return template.render(
+        report=report_json,
+        claims=claims,
+        company_name=company_name,
+        report_id=report_id,
+        api_key=api_key,
+    )
+
+
+def render_home_html() -> str:
+    """The stage 9 landing page — the browser-only entry point into
+    /companies/resolve + /reports (previously API-only, curl required)."""
+    return _env.get_template("home.html").render()
+
+
+def render_progress_html(report_id: uuid.UUID, api_key: str | None, company_name: str) -> str:
+    key_param = f"?api_key={api_key}" if api_key else ""
+    return _env.get_template("progress.html").render(
+        report_id=str(report_id), key_param=key_param, company_name=company_name
+    )
+
+
+def render_failed_html(report_id: uuid.UUID, api_key: str | None) -> str:
+    return _env.get_template("failed.html").render(report_id=str(report_id), api_key=api_key or "")

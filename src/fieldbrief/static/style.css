@@ -1,0 +1,161 @@
+/* Shared design system for every FieldBrief page (home, progress, failed,
+   finished report) — one file so the four pages look like one product
+   instead of four prototypes. Self-hosted, no external fonts/icons (ADR
+   0003: free/open-source, nothing fetched from a third party at runtime). */
+
+:root {
+  --bg: #f7f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f2f6;
+  --ink: #14161c;
+  --ink-soft: #454a56;
+  --muted: #878c99;
+  --line: #e6e7ec;
+  --line-soft: #eff0f3;
+  --accent: #4338ca;
+  --accent-ink: #ffffff;
+  --accent-soft: #edebfb;
+  --good: #157a45;
+  --good-soft: #e9f6ee;
+  --warn: #9a6b00;
+  --warn-soft: #fbf1dd;
+  --bad: #b3261e;
+  --bad-soft: #fcebea;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow-1: 0 1px 2px rgba(20, 22, 28, 0.04);
+  --shadow-2: 0 1px 2px rgba(20, 22, 28, 0.04), 0 10px 28px -8px rgba(20, 22, 28, 0.12);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1d2029;
+    --ink: #eef0f4;
+    --ink-soft: #c2c6d1;
+    --muted: #868c9b;
+    --line: #2a2e3a;
+    --line-soft: #23262f;
+    --accent: #8b85f0;
+    --accent-ink: #11101c;
+    --accent-soft: #272352;
+    --good: #5bc994;
+    --good-soft: #10291d;
+    --warn: #e0ad44;
+    --warn-soft: #302512;
+    --bad: #f0877f;
+    --bad-soft: #341715;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--surface-2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.9em;
+}
+svg.icon { width: 1em; height: 1em; display: inline-block; vertical-align: -0.125em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Top bar used on every page */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 32px; max-width: 1040px; margin: 0 auto;
+}
+.wordmark { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+.wordmark .dot { color: var(--accent); }
+.topbar .topbar-right { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 16px; }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 32px 64px; }
+.wrap-narrow { max-width: 720px; margin: 0 auto; padding: 0 32px 64px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: inherit; font-size: 15px; font-weight: 600;
+  padding: 12px 22px; border-radius: 999px; border: none; cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-2); }
+.btn-primary:hover { box-shadow: 0 1px 2px rgba(20,22,28,.04), 0 14px 32px -6px rgba(67,56,202,.45); }
+.btn-primary:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+.btn-ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
+.btn-ghost:hover { background: var(--surface-2); }
+
+/* Cards */
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+/* Pills / badges */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+  letter-spacing: 0.02em; text-transform: uppercase;
+}
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.good, .pill.low, .pill.sustained_advantage, .pill.temporary_advantage, .pill.priority-low {
+  background: var(--good-soft); color: var(--good);
+}
+.pill.warn, .pill.medium, .pill.parity, .pill.priority-medium {
+  background: var(--warn-soft); color: var(--warn);
+}
+.pill.bad, .pill.high, .pill.competitive_disadvantage, .pill.priority-high {
+  background: var(--bad-soft); color: var(--bad);
+}
+
+/* Spinner */
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Stepper (progress page) */
+.stepper { display: flex; align-items: flex-start; justify-content: space-between; margin: 48px 0 12px; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; }
+.step:not(:last-child)::after {
+  content: ""; position: absolute; top: 15px; left: 50%; width: 100%; height: 2px;
+  background: var(--line); z-index: 0;
+}
+.step.complete:not(:last-child)::after { background: var(--accent); }
+.step-dot {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 2px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 700;
+  position: relative; z-index: 1; transition: all 0.25s ease;
+}
+.step.complete .step-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.step.active .step-dot {
+  border-color: var(--accent); color: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.step-label { margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.step.active .step-label, .step.complete .step-label { color: var(--ink); }
+
+/* Fade-in utility */
+.fade-in { animation: fade-in 0.4s ease both; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }

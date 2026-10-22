@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyzing {{ company_name }}… — FieldBrief</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .center-card { padding: 40px 36px; margin: 64px auto 0; max-width: 560px; }
+  .center-card h1 { font-size: 22px; margin: 0 0 4px; }
+  .center-card .sub { color: var(--muted); font-size: 14px; }
+  .status-line { margin-top: 36px; text-align: center; font-size: 14px; color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 20px; }
+  .elapsed { text-align: center; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .back-link { display: block; text-align: center; margin-top: 28px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="wordmark">Field<span class="dot">Brief</span></div>
+</div>
+
+<div class="card center-card fade-in">
+  <h1>Analyzing {{ company_name }}</h1>
+  <div class="sub">This runs live — real web research, no mocked data.</div>
+
+  <div class="stepper" id="stepper">
+    <div class="step" data-stage="discovering"><div class="step-dot">1</div><div class="step-label">Discover</div></div>
+    <div class="step" data-stage="researching"><div class="step-dot">2</div><div class="step-label">Research</div></div>
+    <div class="step" data-stage="analyzing"><div class="step-dot">3</div><div class="step-label">Analyze</div></div>
+    <div class="step" data-stage="synthesizing"><div class="step-dot">4</div><div class="step-label">Synthesize</div></div>
+  </div>
+
+  <div class="status-line" id="status-line"><span class="spinner"></span><span id="status-text">connecting…</span></div>
+  <div class="elapsed" id="elapsed"></div>
+</div>
+
+<a class="back-link" href="/">&larr; Start a different analysis</a>
+
+<script>
+(function () {
+  const STEPS = ["discovering", "researching", "analyzing", "synthesizing"];
+  const steps = Array.from(document.querySelectorAll(".step"));
+  const statusText = document.getElementById("status-text");
+  const elapsedEl = document.getElementById("elapsed");
+  const startedAt = Date.now();
+
+  setInterval(function () {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    elapsedEl.textContent = s + "s elapsed";
+  }, 1000);
+
+  function applyStage(stage) {
+    const idx = STEPS.indexOf(stage);
+    steps.forEach(function (el, i) {
+      el.classList.remove("complete", "active");
+      if (idx === -1) return;
+      if (i < idx) el.classList.add("complete");
+      else if (i === idx) el.classList.add("active");
+    });
+    if (stage === "done") steps.forEach(function (el) { el.classList.add("complete"); el.classList.remove("active"); });
+  }
+
+  const reportId = {{ report_id | tojson }};
+  const keyParam = {{ key_param | tojson }};
+  const es = new EventSource("/reports/" + reportId + "/events" + keyParam);
+  es.onmessage = function (e) {
+    const data = JSON.parse(e.data);
+    applyStage(data.stage);
+    statusText.textContent = data.message;
+    if (data.stage === "done" || data.stage === "failed") {
+      es.close();
+      location.reload();
+    }
+  };
+  es.onerror = function () {
+    statusText.textContent = "connection lost — retrying…";
+  };
+})();
+</script>
+</body>
+</html>
