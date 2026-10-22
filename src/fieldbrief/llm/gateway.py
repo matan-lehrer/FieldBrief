@@ -78,7 +78,7 @@ class LLMGateway:
                 return schema.model_validate_json(cached)
 
         estimated_cost = _estimate_cost(model, messages)
-        budget.check(estimated_cost)
+        budget.reserve(estimated_cost)
         await self._rate_limiter.acquire(provider)
 
         start = time.monotonic()
@@ -90,15 +90,18 @@ class LLMGateway:
             num_retries=2,  # covers 429/5xx with LiteLLM's built-in backoff+jitter
         )
         raw = response.choices[0].message.content
+        # Settled the instant the real cost is known, regardless of whether
+        # the JSON below turns out valid — the call happened and cost money
+        # either way; a repair call (if needed) accounts for its own cost.
+        cost_usd = litellm.completion_cost(completion_response=response)
+        budget.settle(cost_usd - estimated_cost)
 
         try:
             result = schema.model_validate_json(raw)
         except ValidationError as exc:
-            result = await self._repair(model, messages, schema, raw, exc)
+            result = await self._repair(model, messages, schema, raw, exc, budget=budget)
 
         latency_s = time.monotonic() - start
-        cost_usd = litellm.completion_cost(completion_response=response)
-        budget.settle(cost_usd)
 
         usage = response.usage
         logger.info(
@@ -129,9 +132,14 @@ class LLMGateway:
         schema: type[T],
         bad_output: str,
         error: ValidationError,
+        *,
+        budget: Budget,
     ) -> T:
         """design.md step 6: "one repair retry." If this also fails, the error
-        propagates — the caller (a graph node) treats it as a gap, per ADR 0010."""
+        propagates — the caller (a graph node) treats it as a gap, per ADR 0010.
+        A real provider call either way, so it's budget-checked and settled
+        just like the original call — it used to be neither, making repairs
+        effectively free and uncapped."""
         repair_messages = [
             *messages,
             {"role": "assistant", "content": bad_output},
@@ -143,6 +151,8 @@ class LLMGateway:
                 ),
             },
         ]
+        estimated_cost = _estimate_cost(model, repair_messages)
+        budget.reserve(estimated_cost)
         response = await litellm.acompletion(
             model=model,
             messages=repair_messages,
@@ -150,6 +160,9 @@ class LLMGateway:
             api_key=settings.llm_api_key,
             num_retries=1,
         )
+        cost_usd = litellm.completion_cost(completion_response=response)
+        budget.settle(cost_usd - estimated_cost)
+
         raw = response.choices[0].message.content
         try:
             return schema.model_validate_json(raw)

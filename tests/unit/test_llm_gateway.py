@@ -92,9 +92,29 @@ async def test_call_raises_when_repair_also_invalid() -> None:
 
     with (
         patch("fieldbrief.llm.gateway.litellm.acompletion", new=mock_call),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
         pytest.raises(LLMCallError),
     ):
         await gateway.call(Task.EXTRACT, [{"role": "user", "content": "hi"}], Answer, budget)
+
+
+@pytest.mark.asyncio
+async def test_repair_call_cost_is_settled_against_the_budget() -> None:
+    """A repair call is a second real provider call — it used to be neither
+    budget-checked nor settled, making it effectively free and uncapped."""
+    gateway = LLMGateway()
+    budget = Budget(limit_usd=1.0)
+    bad = _fake_response("not json")
+    good = _fake_response('{"value": "fixed"}')
+    mock_call = AsyncMock(side_effect=[bad, good])
+
+    with (
+        patch("fieldbrief.llm.gateway.litellm.acompletion", new=mock_call),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", side_effect=[0.001, 0.002]),
+    ):
+        await gateway.call(Task.EXTRACT, [{"role": "user", "content": "hi"}], Answer, budget)
+
+    assert budget.spent_usd == pytest.approx(0.003)
 
 
 @pytest.mark.asyncio

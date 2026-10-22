@@ -46,6 +46,7 @@ def build_company_research_graph(
     tier: Tier,
     edgar_client: httpx.AsyncClient | None = None,
     progress: ProgressSink = _NULL_PROGRESS,
+    deadline: float | None = None,
 ) -> CompiledStateGraph[GraphState, None, GraphState, GraphState]:
     graph = StateGraph(GraphState)
 
@@ -72,7 +73,7 @@ def build_company_research_graph(
     graph.add_edge("research", "gap_check")
     graph.add_conditional_edges(
         "gap_check",
-        partial(should_continue_researching, tier=tier),
+        partial(should_continue_researching, tier=tier, deadline=deadline),
         {"loop": "research", "advance": "analyze"},
     )
     graph.add_edge("analyze", END)

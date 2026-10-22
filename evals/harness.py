@@ -20,7 +20,11 @@ import httpx
 import yaml
 
 from evals.schema import GoldenCompany
-from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT
+from fieldbrief.agents.field_checklist import (
+    TIER_COMPETITOR_COUNT,
+    budget_usd_for,
+    time_budget_seconds_for,
+)
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.config import settings
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
@@ -94,7 +98,7 @@ async def run_one(slug: str, golden: GoldenCompany) -> CompanyEvalResult:
             best = await pick_company_like(wikidata_client, candidates) or candidates[0]
             details = await get_company_details(wikidata_client, best.qid)
 
-            budget = Budget(limit_usd=settings.report_budget_usd_standard)
+            budget = Budget(limit_usd=budget_usd_for("standard"))
             gateway = LLMGateway()
             fetcher = Fetcher()
             http_client = httpx.AsyncClient()
@@ -127,6 +131,7 @@ async def run_one(slug: str, golden: GoldenCompany) -> CompanyEvalResult:
                         target_company=company,
                         tier="standard",
                         competitor_count=TIER_COMPETITOR_COUNT["standard"],
+                        time_budget_seconds=time_budget_seconds_for("standard"),
                     )
             finally:
                 await fetcher.aclose()

@@ -8,6 +8,7 @@ research sessions + the final save_report), so it cleans up its own rows
 explicitly instead of relying on the rollback-at-teardown pattern.
 """
 
+import time
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -24,8 +25,15 @@ from fieldbrief.agents.llm_schemas import (
     ExtractionResult,
     FrameworkSynthesisResult,
 )
-from fieldbrief.agents.nodes import analyze_node, plan_node, research_node
-from fieldbrief.agents.orchestrator import run_report
+from fieldbrief.agents.nodes import (
+    analyze_node,
+    gap_check_node,
+    plan_node,
+    research_node,
+    should_continue_researching,
+)
+from fieldbrief.agents.orchestrator import _research_company, run_report
+from fieldbrief.agents.progress import NullProgressSink
 from fieldbrief.db.models import (
     Claim,
     Company,
@@ -1299,6 +1307,112 @@ async def test_plan_node_requires_several_forces_before_closing_market_forces() 
             gaps_after = await plan_node(plan_state, session=session)
             assert not any(g["field"] == "market.forces" for g in gaps_after["gaps"])
 
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_research_company_degrades_to_partial_snapshot_on_budget_exhaustion() -> None:
+    """A real $ budget running out mid-research used to crash the whole
+    report: BudgetExceededError was never caught, so it propagated to the
+    worker's generic except-Exception and the report became "failed" —
+    violating "missing data is partial, never failed." It must instead
+    degrade to whatever research made it in before the cutoff."""
+
+    async def fake_fetch_overview(self: Fetcher, url: str) -> str:
+        return _page("OVERVIEW_PAGE_MARKER")
+
+    async def fake_search_none(
+        client: object, searxng_url: str, query: str, limit: int = 10
+    ) -> list[SearchResult]:
+        return []
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://budget-cutoff-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Budget Cutoff Co", domain=domain)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=0.0)  # already exhausted before the first call
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_overview),
+                patch("fieldbrief.agents.nodes.search", new=fake_search_none),
+            ):
+                result = await _research_company(
+                    company=company,
+                    is_target=True,
+                    report_id=report.id,
+                    tier="quick",
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                    progress=NullProgressSink(),
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert result["hit_budget_cutoff"] is True
+            assert result["company_snapshot"] is not None
+            # Nothing was ever actually researched — every quick-tier field
+            # is still a real gap, not silently dropped.
+            assert result["gaps"]
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
+def test_should_continue_researching_stops_at_the_time_deadline() -> None:
+    """report_time_budget_seconds used to be defined and never read — no
+    wall-clock enforcement existed at all. A past deadline must stop the
+    retry loop even with open gaps and rounds left in the tier's budget."""
+    state = {
+        "gaps": [{"field": "profile.description", "attempts": 0}],
+        "retry_round": 0,
+    }
+    assert should_continue_researching(state, tier="deep", deadline=None) == "loop"
+    assert should_continue_researching(state, tier="deep", deadline=time.monotonic() - 1) == (
+        "advance"
+    )
+
+
+@pytest.mark.asyncio
+async def test_gap_check_node_stops_retrying_a_field_past_its_attempt_cap() -> None:
+    """MAX_ATTEMPTS_PER_FIELD was defined but never enforced — only the
+    tier's round cap stopped retries, which for deep tier (3 rounds) could
+    retry a single field past field-checklist.md rule 1's 2-attempt cap.
+    Once hit, the field must stop being retried but still surface as a real
+    CoverageGap via exhausted_gaps, not vanish."""
+    try:
+        async with SessionFactory() as session:
+            domain = f"https://attempt-cap-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Attempt Cap Co", domain=domain)
+
+            state = {
+                "company_id": str(company.id),
+                "gaps": [{"field": "profile.description", "attempts": 1}],
+                "exhausted_gaps": [],
+                "retry_round": 1,
+            }
+            result = await gap_check_node(state, session=session)
+
+            assert result["gaps"] == []  # dropped — hit the attempt cap, stop retrying
+            assert result["exhausted_gaps"] == [{"field": "profile.description", "attempts": 2}]
             await session.rollback()
     finally:
         await engine.dispose()
