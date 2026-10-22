@@ -10,6 +10,7 @@ recommendations) lives in agents/synthesis.py, run once after every company's
 analyze_node completes (agents/orchestrator.py).
 """
 
+import time
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
@@ -431,15 +432,39 @@ async def research_node(
 async def gap_check_node(state: GraphState, *, session: AsyncSession) -> dict[str, Any]:
     company_id = uuid.UUID(state["company_id"])
     remaining = []
+    # field-checklist.md rule 1: "After N attempts, store an explicit
+    # unknown claim" — MAX_ATTEMPTS_PER_FIELD was defined but never actually
+    # enforced; only the tier's round cap stopped retries, which for deep
+    # tier (3 rounds) could retry a single field past its own attempt cap.
+    # Dropped here rather than kept in `gaps` so it stops being retried, but
+    # tracked in `exhausted_gaps` so it still surfaces as a real CoverageGap
+    # instead of silently disappearing from the report.
+    exhausted = list(state.get("exhausted_gaps", []))
     for gap in state["gaps"]:
         fresh = await get_fresh_claims(session, company_id, gap["field"], _max_age(gap["field"]))
         if _field_resolved(fresh, gap["field"]):
             continue  # resolved — drop from gaps
-        remaining.append({"field": gap["field"], "attempts": gap["attempts"] + 1})
-    return {"gaps": remaining, "retry_round": state["retry_round"] + 1}
+        attempts = gap["attempts"] + 1
+        if attempts >= MAX_ATTEMPTS_PER_FIELD:
+            exhausted.append({"field": gap["field"], "attempts": attempts})
+            continue
+        remaining.append({"field": gap["field"], "attempts": attempts})
+    return {
+        "gaps": remaining,
+        "exhausted_gaps": exhausted,
+        "retry_round": state["retry_round"] + 1,
+    }
 
 
-def should_continue_researching(state: GraphState, *, tier: Tier) -> str:
+def should_continue_researching(
+    state: GraphState, *, tier: Tier, deadline: float | None = None
+) -> str:
+    # report_time_budget_seconds (config.py) used to be defined and never
+    # read anywhere — no wall-clock enforcement existed at all. A deadline
+    # (agents/orchestrator.py's run_report, in time.monotonic() terms) cuts
+    # the loop short the same way the round cap does, just time-driven.
+    if deadline is not None and time.monotonic() >= deadline:
+        return "advance"
     max_rounds = TIER_MAX_RETRY_ROUNDS[tier]
     if state["gaps"] and state["retry_round"] < max_rounds:
         return "loop"

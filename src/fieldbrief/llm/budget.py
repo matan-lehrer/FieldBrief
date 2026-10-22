@@ -32,9 +32,25 @@ class Budget:
         return max(0.0, self.limit_usd - self.spent_usd)
 
     def check(self, estimated_usd: float) -> None:
-        """Raise before making a call that would exceed the budget."""
+        """Raise if a call of this estimated size wouldn't fit. A pure,
+        non-mutating look — prefer reserve() for a spend you intend to
+        settle() afterwards; this is for a dry-run check only."""
         if self.spent_usd + estimated_usd > self.limit_usd:
             raise BudgetExceededError(self.spent_usd, estimated_usd, self.limit_usd)
 
-    def settle(self, actual_usd: float) -> None:
-        self.spent_usd += actual_usd
+    def reserve(self, estimated_usd: float) -> None:
+        """Atomically check-and-commit an estimate, synchronously (no
+        `await` in between) — this is what makes a Budget shared across
+        concurrent callers (agents/orchestrator.py's asyncio.gather over
+        per-company research) actually safe. check() used to be called,
+        then an LLM call was awaited, then settle() — two concurrent callers
+        could both pass check() before either had settled, overshooting the
+        budget. Pair with settle(actual_usd - estimated_usd) once the real
+        cost is known, to true up without double-counting the reservation."""
+        self.check(estimated_usd)
+        self.spent_usd += estimated_usd
+
+    def settle(self, usd: float) -> None:
+        """Add a (possibly negative) delta to spend — on its own, a plain
+        accumulator; after reserve(estimated), pass (actual - estimated)."""
+        self.spent_usd += usd

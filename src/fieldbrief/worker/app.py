@@ -14,7 +14,7 @@ import httpx
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitQueue
 
-from fieldbrief.agents.field_checklist import Tier
+from fieldbrief.agents.field_checklist import Tier, budget_usd_for, time_budget_seconds_for
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.agents.progress import Stage
 from fieldbrief.config import settings
@@ -56,7 +56,8 @@ async def handle_report_job(job: ReportJob) -> None:
         report.status = "running"
         await session.commit()
 
-        budget = Budget(limit_usd=settings.report_budget_usd_standard)
+        tier = cast(Tier, report.tier)
+        budget = Budget(limit_usd=budget_usd_for(tier))
         gateway = LLMGateway()
         fetcher = Fetcher()
         http_client = httpx.AsyncClient()
@@ -74,10 +75,11 @@ async def handle_report_job(job: ReportJob) -> None:
                 searxng_url=settings.searxng_url,
                 report_id=report_id,
                 target_company=company,
-                tier=cast(Tier, report.tier),
+                tier=tier,
                 competitor_count=job.competitor_count,
                 progress=progress,
                 edgar_client=edgar_client,
+                time_budget_seconds=time_budget_seconds_for(tier),
             )
         except Exception as exc:
             logger.exception("report_job_failed", extra={"report_id": job.report_id})

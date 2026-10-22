@@ -5,20 +5,22 @@ cross-company synthesis join. The one function the CLI (and, later, the
 worker) calls."""
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fieldbrief.agents.competitors import discover_competitors
 from fieldbrief.agents.field_checklist import Tier
 from fieldbrief.agents.graph import build_company_research_graph
-from fieldbrief.agents.nodes import MAX_ATTEMPTS_PER_FIELD
+from fieldbrief.agents.nodes import analyze_node, plan_node
 from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.agents.synthesis import CompanyRef, run_synthesis
-from fieldbrief.db.models import Company
+from fieldbrief.db.models import Claim, Company
 from fieldbrief.db.repositories import (
     add_report_competitors,
     get_or_create_company,
@@ -28,7 +30,7 @@ from fieldbrief.db.repositories import (
 from fieldbrief.db.session import SessionFactory
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
-from fieldbrief.llm.budget import Budget
+from fieldbrief.llm.budget import Budget, BudgetExceededError
 from fieldbrief.llm.gateway import LLMGateway
 
 _NULL_PROGRESS = NullProgressSink()
@@ -66,6 +68,7 @@ async def _research_company(
     searxng_url: str,
     progress: ProgressSink,
     edgar_client: httpx.AsyncClient | None = None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     """Its own session, not the caller's — this runs concurrently with every
     other company's research (asyncio.gather below), and AsyncSession isn't
@@ -83,6 +86,7 @@ async def _research_company(
             tier=tier,
             edgar_client=edgar_client,
             progress=progress,
+            deadline=deadline,
         )
         initial: GraphState = {
             "report_id": str(report_id),
@@ -94,10 +98,37 @@ async def _research_company(
             "tier": tier,
             "retry_round": 0,
             "gaps": [],
+            "exhausted_gaps": [],
             "claim_ids": [],
             "company_snapshot": None,
         }
-        result = await graph.ainvoke(initial)
+        try:
+            result = await graph.ainvoke(initial)
+        except BudgetExceededError:
+            # The report's $ budget ran out mid-research. Claims already
+            # extracted are durable, shared research (ADR 0004) regardless
+            # of how the graph run ended — build this company's snapshot
+            # from whatever made it in, rather than crashing the whole
+            # report (CLAUDE.md hard constraint 5: partial, never failed).
+            await progress.emit(
+                Stage.RESEARCHING, f"{company.name}: budget exhausted, using research so far"
+            )
+            plan_result = await plan_node(initial, session=session)
+            analyze_result = await analyze_node(initial, session=session)
+            claims_result = await session.execute(
+                select(Claim.id).where(Claim.company_id == company.id)
+            )
+            result = {
+                "company_id": str(company.id),
+                "gaps": plan_result["gaps"],
+                "exhausted_gaps": [],
+                "claim_ids": [str(cid) for (cid,) in claims_result.all()],
+                "company_snapshot": analyze_result["company_snapshot"],
+                "hit_budget_cutoff": True,
+            }
+        else:
+            if deadline is not None and time.monotonic() >= deadline and result["gaps"]:
+                result = {**result, "hit_budget_cutoff": True}
         await session.commit()
         return result
 
@@ -117,20 +148,31 @@ async def run_report(
     competitor_count: int,
     progress: ProgressSink = _NULL_PROGRESS,
     edgar_client: httpx.AsyncClient | None = None,
+    time_budget_seconds: float | None = None,
 ) -> dict[str, Any]:
+    deadline = time.monotonic() + time_budget_seconds if time_budget_seconds is not None else None
+
     competitors: list[Company] = []
     if competitor_count > 0:
         await progress.emit(Stage.DISCOVERING, f"Finding up to {competitor_count} competitors")
-        candidates = await discover_competitors(
-            target_company.name,
-            http_client=http_client,
-            fetcher=fetcher,
-            gateway=gateway,
-            budget=budget,
-            searxng_url=searxng_url,
-            report_id=str(report_id),
-            limit=competitor_count,
-        )
+        try:
+            candidates = await discover_competitors(
+                target_company.name,
+                http_client=http_client,
+                fetcher=fetcher,
+                gateway=gateway,
+                budget=budget,
+                searxng_url=searxng_url,
+                report_id=str(report_id),
+                limit=competitor_count,
+            )
+        except BudgetExceededError:
+            # Not fatal — the report still runs target-only, which is a far
+            # better outcome than crashing before research even starts.
+            candidates = []
+            await progress.emit(
+                Stage.DISCOVERING, "Budget exhausted before competitor discovery — target only"
+            )
         for candidate in candidates:
             resolved = await _resolve_competitor(
                 candidate.name, wikidata_client=wikidata_client, session=session
@@ -159,6 +201,7 @@ async def run_report(
                 searxng_url=searxng_url,
                 progress=progress,
                 edgar_client=edgar_client,
+                deadline=deadline,
             )
             for company in companies
         )
@@ -184,12 +227,16 @@ async def run_report(
             "company_id": result["company_id"],
             "field": gap["field"],
             "attempts": gap["attempts"],
-            "reason": (
-                "not_found" if gap["attempts"] >= MAX_ATTEMPTS_PER_FIELD else "budget_cutoff"
-            ),
+            # "budget_cutoff" means an actual $ or time cutoff ended
+            # research early (result["hit_budget_cutoff"], set above);
+            # every other remaining gap tried its allotted attempts/rounds
+            # within budget and is an honest "not_found" — attempts count
+            # alone used to drive this and mislabeled normal round-cap
+            # exhaustion (e.g. every quick-tier gap) as a budget cutoff.
+            "reason": "budget_cutoff" if result.get("hit_budget_cutoff") else "not_found",
         }
         for result in results
-        for gap in result["gaps"]
+        for gap in [*result["gaps"], *result.get("exhausted_gaps", [])]
     ]
 
     await progress.emit(Stage.SYNTHESIZING, "Running frameworks and SWOT")

@@ -4,7 +4,12 @@ import json
 import httpx
 import typer
 
-from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT, Tier
+from fieldbrief.agents.field_checklist import (
+    TIER_COMPETITOR_COUNT,
+    Tier,
+    budget_usd_for,
+    time_budget_seconds_for,
+)
 from fieldbrief.agents.orchestrator import run_report
 from fieldbrief.config import settings
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
@@ -32,12 +37,7 @@ def analyze(
 ) -> None:
     """Analyze a company and produce a cited strategy report."""
     competitor_count = competitors if competitors >= 0 else TIER_COMPETITOR_COUNT[tier]
-    budget_by_tier = {
-        "quick": settings.report_budget_usd_standard * 0.2,
-        "standard": settings.report_budget_usd_standard,
-        "deep": settings.report_budget_usd_standard * 4,
-    }
-    asyncio.run(_analyze(company, tier, competitor_count, budget_by_tier[tier]))
+    asyncio.run(_analyze(company, tier, competitor_count, budget_usd_for(tier)))
 
 
 async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_usd: float) -> None:
@@ -92,6 +92,7 @@ async def _analyze(company_name: str, tier: Tier, competitor_count: int, budget_
                     tier=tier,
                     competitor_count=competitor_count,
                     edgar_client=edgar_client,
+                    time_budget_seconds=time_budget_seconds_for(tier),
                 )
         finally:
             await fetcher.aclose()

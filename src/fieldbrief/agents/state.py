@@ -27,5 +27,10 @@ class GraphState(TypedDict):
     tier: Tier
     retry_round: int
     gaps: list[Gap]
+    # Fields dropped from `gaps` because they hit field-checklist.md rule
+    # 1's attempt cap (MAX_ATTEMPTS_PER_FIELD) before the tier's round cap —
+    # tracked separately so they still surface as an explicit CoverageGap
+    # instead of silently vanishing once stopped retrying.
+    exhausted_gaps: list[Gap]
     claim_ids: list[str]  # every claim_id produced for this company, for report_claims
     company_snapshot: dict[str, Any] | None  # built by analyze_node
