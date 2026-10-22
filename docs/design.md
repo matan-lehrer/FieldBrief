@@ -439,6 +439,12 @@ DELETE /reports/{id}                          -> cancel / delete
 - `POST /reports` accepts an `Idempotency-Key` header.
 - `POST /reports` only enqueues and returns — that is the <= 200 ms acknowledgment.
 
+**Implementation notes (stage 6):**
+- Built: `POST /companies/resolve`, `POST /reports`, `GET /reports/{id}`, `GET /reports/{id}/events` (SSE). `GET /companies/{id}/competitors`, `format=pdf`, `/refresh`, list, and `DELETE` are stage 7+ (need the UI to be worth building against) or deferred.
+- `POST /reports` takes `{company_id, tier, competitor_count}`, not `{company_id, competitor_ids, tier}` — competitor discovery (ADR 0012) runs inside the worker's call to `run_report`, not as a client-driven pre-step with an edit UI, since that UI doesn't exist yet (stage 7). `competitor_ids` returns once it does.
+- SSE reads the progress exchange, but a worker finishing (mocked LLM calls are near-instant; so can a very short real report) before a client's queue is bound means that message is simply gone — AMQP topic exchanges don't replay to late subscribers. `GET /reports/{id}/events` binds its queue first, then falls back to the `Report` row's own status (checked immediately after bind, and again on every 5s of silence) so a client is guaranteed to reach a terminal state rather than hang on a "done" it missed. Found via the stage-6 integration test, which hit this race immediately with mocked (near-instant) work.
+- The worker declares the progress exchange itself on every `emit()` (idempotent, cheap) rather than assuming some consumer declared it first — a publish-only call never creates an exchange, so a worker with zero SSE clients connected would otherwise 404 on its very first progress event.
+
 ---
 
 ## 9. Data flow
