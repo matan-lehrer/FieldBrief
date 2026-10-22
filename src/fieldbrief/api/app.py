@@ -11,7 +11,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 import aio_pika
@@ -20,7 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from faststream.rabbit import RabbitBroker
 
-from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT
+from fieldbrief.agents.field_checklist import TIER_COMPETITOR_COUNT, Tier
 from fieldbrief.agents.progress import PROGRESS_EXCHANGE, Stage, routing_key_for
 from fieldbrief.api.schemas import (
     CompanyOut,
@@ -32,6 +32,7 @@ from fieldbrief.api.schemas import (
 from fieldbrief.config import settings
 from fieldbrief.db.models import Company
 from fieldbrief.db.repositories import (
+    count_report_competitors,
     create_report,
     get_or_create_cli_user,
     get_or_create_company,
@@ -155,6 +156,47 @@ async def get_report_endpoint(report_id: UUID) -> ReportOut:
             created_at=report.created_at,
             completed_at=report.completed_at,
         )
+
+
+@app.post(
+    "/reports/{report_id}/refresh",
+    response_model=CreateReportResponse,
+    dependencies=[Depends(require_api_key)],
+)
+async def refresh_report(report_id: UUID) -> CreateReportResponse:
+    """design.md §9: "Refresh starts at Plan" — a new, separate report
+    linked via parent_report_id (reports are immutable, never mutated in
+    place). Its plan_node reuses whatever claims are still fresh (ADR 0004)
+    and only re-researches what isn't; nothing here needs to know that."""
+    async with SessionFactory() as session:
+        old_report = await get_report(session, report_id)
+        if old_report is None:
+            raise HTTPException(status_code=404, detail="report not found")
+        user_id = old_report.user_id
+        target_company_id = old_report.target_company_id
+        tier = cast(Tier, old_report.tier)
+        # Not stored on the Report row — the original's REPORT_COMPETITORS
+        # rows are the one record of how many competitors it actually used.
+        competitor_count = await count_report_competitors(session, old_report.id)
+
+        new_report = await create_report(
+            session,
+            user_id=user_id,
+            target_company_id=target_company_id,
+            tier=tier,
+            status="queued",
+            parent_report_id=old_report.id,
+        )
+        await session.commit()
+        new_report_id = new_report.id
+
+    await job_broker.publish(
+        ReportJob(report_id=str(new_report_id), competitor_count=competitor_count).model_dump(
+            mode="json"
+        ),
+        queue=REPORT_JOBS_QUEUE,
+    )
+    return CreateReportResponse(report_id=new_report_id)
 
 
 @app.get("/reports/{report_id}/events", dependencies=[Depends(require_api_key)])

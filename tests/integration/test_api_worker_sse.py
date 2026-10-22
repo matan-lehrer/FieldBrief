@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 import fieldbrief.worker.app as worker_app_module
 from fieldbrief.agents.llm_schemas import (
@@ -148,6 +148,29 @@ async def test_report_runs_through_api_with_live_sse_progress() -> None:
                     assert "Acme Corp" in view_resp.text
                     assert "Makes widgets." in view_resp.text
 
+                    # refresh: a new, separate report (design.md §4: immutable,
+                    # never mutated in place), linked via parent_report_id.
+                    refresh_resp = await client.post(f"/reports/{report_id}/refresh")
+                    assert refresh_resp.status_code == 200
+                    refreshed_id = refresh_resp.json()["report_id"]
+                    assert refreshed_id != report_id
+
+                    refreshed_stages: list[str] = []
+                    async with client.stream(
+                        "GET", f"/reports/{refreshed_id}/events"
+                    ) as refreshed_events:
+                        async for line in refreshed_events.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            payload = json.loads(line[len("data: ") :])
+                            refreshed_stages.append(payload["stage"])
+                            if payload["stage"] in ("done", "failed"):
+                                break
+                    assert refreshed_stages[-1] == "done"
+
+                    refreshed_report = await client.get(f"/reports/{refreshed_id}")
+                    assert refreshed_report.status_code == 200
+
                     # idempotency: same key returns the same report, doesn't create another
                     dup_resp = await client.post(
                         "/reports",
@@ -170,6 +193,13 @@ async def test_report_runs_through_api_with_live_sse_progress() -> None:
                     select(Report.id).where(Report.target_company_id == created_company_id)
                 )
                 report_ids = [row[0] for row in reports_result.all()]
+                # A refresh's new report points back at the original via
+                # parent_report_id — null that out first or deleting the
+                # parent while a child still references it violates the FK.
+                for rid in report_ids:
+                    await cleanup_session.execute(
+                        update(Report).where(Report.id == rid).values(parent_report_id=None)
+                    )
                 for rid in report_ids:
                     await cleanup_session.execute(
                         delete(ReportClaim).where(ReportClaim.report_id == rid)

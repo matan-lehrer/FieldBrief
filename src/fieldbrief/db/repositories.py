@@ -192,16 +192,21 @@ async def create_report(
     tier: str,
     status: str = "running",
     idempotency_key: str | None = None,
+    parent_report_id: uuid.UUID | None = None,
 ) -> Report:
     """`status` defaults to "running" — the CLI calls this immediately before
     starting the graph synchronously. The API passes status="queued" instead:
-    the job hasn't started until a worker picks it up (design.md §8)."""
+    the job hasn't started until a worker picks it up (design.md §8).
+    `parent_report_id` links a refresh to the report it refreshed (design.md
+    §4: reports are immutable, so refresh creates a new version, never
+    mutates the old one)."""
     report = Report(
         user_id=user_id,
         target_company_id=target_company_id,
         tier=tier,
         status=status,
         idempotency_key=idempotency_key,
+        parent_report_id=parent_report_id,
     )
     session.add(report)
     await session.flush()
@@ -247,6 +252,17 @@ async def add_report_competitors(
     for competitor_id in set(competitor_ids):
         session.add(ReportCompetitor(report_id=report_id, company_id=competitor_id))
     await session.flush()
+
+
+async def count_report_competitors(session: AsyncSession, report_id: uuid.UUID) -> int:
+    """Not persisted on the Report row itself — competitor_count only ever
+    existed as a transient job-message field (worker/jobs.py). Refresh needs
+    to know how many competitors the original report actually used, and
+    REPORT_COMPETITORS is the one place that's recorded (design.md §4)."""
+    result = await session.execute(
+        select(ReportCompetitor).where(ReportCompetitor.report_id == report_id)
+    )
+    return len(list(result.scalars().all()))
 
 
 async def upsert_competitor_relationship(
