@@ -52,7 +52,12 @@ SEARCH_GROUPS: list[tuple[set[str], str]] = [
     ({"events.recent"}, "{name} news"),
     ({"pricing.model"}, "{name} pricing"),
     ({"financials.profitability", "financials.funding_or_cap"}, "{name} funding financials"),
-    ({"market.forces", "resources.advantages"}, "{name} competitive advantage analysis"),
+    # Split, not shared: VRIO (and therefore SWOT's Strengths/Weaknesses,
+    # ADR 0009) depends entirely on resources.advantages claims. Sharing one
+    # page with market.forces meant a page that covered industry dynamics
+    # but never named a resource left VRIO (and S/W) empty on real runs.
+    ({"resources.advantages"}, "{name} competitive advantage moat"),
+    ({"market.forces"}, "{name} industry competition analysis"),
     ({"environment.regulation"}, "{name} regulation compliance"),
 ]
 RESULTS_PER_SEARCH = 4  # enough headroom for a few retry rounds to each see a fresh result

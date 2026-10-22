@@ -797,6 +797,80 @@ async def test_research_node_sources_financials_from_edgar_when_cik_present() ->
 
 
 @pytest.mark.asyncio
+async def test_research_node_searches_resources_and_market_forces_independently() -> None:
+    """resources.advantages and market.forces used to share one search query
+    and one fetched page — a page about industry dynamics but no named
+    resource left VRIO (and therefore SWOT's Strengths/Weaknesses, ADR 0009)
+    empty on real runs. They must now trigger two independent searches."""
+    queries_seen: list[str] = []
+
+    async def recording_search(
+        client: object, searxng_url: str, query: str, limit: int = 10
+    ) -> list[SearchResult]:
+        queries_seen.append(query)
+        return []  # no results needed — this test only checks the queries made
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://search-split-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Split Co", domain=domain)
+            created_company_id = company.id
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="standard"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+
+            async def fake_fetch_none(self: Fetcher, url: str) -> None:
+                return None
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_none),
+                patch("fieldbrief.agents.nodes.search", new=recording_search),
+            ):
+                await research_node(
+                    {
+                        "report_id": str(report.id),
+                        "company_id": str(company.id),
+                        "company_name": company.name,
+                        "company_domain": domain,
+                        "company_cik": None,
+                        "is_target": True,
+                        "tier": "standard",
+                        "retry_round": 0,
+                        "gaps": [
+                            {"field": "resources.advantages", "attempts": 0},
+                            {"field": "market.forces", "attempts": 0},
+                        ],
+                        "claim_ids": [],
+                        "company_snapshot": None,
+                    },
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    searxng_url="http://unused.invalid",
+                )
+            await http_client.aclose()
+            await fetcher.aclose()
+
+            assert "Split Co competitive advantage moat" in queries_seen
+            assert "Split Co industry competition analysis" in queries_seen
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
+@pytest.mark.asyncio
 async def test_research_node_fetches_two_sources_for_corroboration_fields() -> None:
     """financials/market.forces fields feed "predictions" directly, so a
     second independent source is fetched in the SAME round instead of

@@ -10,25 +10,25 @@
     --low: var(--good); --medium: var(--warn); --high: var(--bad);
     --strength: var(--good); --weakness: var(--bad); --opportunity: #2563a8; --threat: var(--warn);
   }
+  html { scroll-behavior: smooth; }
   body { padding-bottom: 64px; }
   .page { max-width: 880px; margin: 0 auto; padding: 0 32px; }
   .report-header { padding: 28px 0 8px; }
   h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
-  h2 { font-size: 18px; margin: 40px 0 14px; display: flex; align-items: center; gap: 9px; }
+  h2 { font-size: 18px; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
   h2 .section-icon { width: 20px; height: 20px; border-radius: 6px; background: var(--accent-soft); color: var(--accent);
     display: inline-flex; align-items: center; justify-content: center; flex: none; }
   h2 .section-icon svg { width: 13px; height: 13px; }
   h3 { font-size: 14.5px; margin: 0 0 4px; }
   .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+  section { margin-top: 40px; scroll-margin-top: 68px; }
   .card { padding: 16px 18px; margin-bottom: 12px; }
   .card.target { border-left: 3px solid var(--accent); }
   .field { margin: 11px 0; }
   .field-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
-  .citation { font-size: 13.5px; margin-top: 3px; }
-  .citation .badge { margin-right: 6px; }
+  .citation { font-size: 13.5px; margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .citation .badge { margin-right: 0; }
   .confidence { color: var(--muted); font-size: 11px; }
-  .sources { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
-  .sources a { color: inherit; }
   .gap { color: var(--muted); font-style: italic; font-size: 13px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
@@ -48,23 +48,62 @@
   .swot-quad.threats { border-left: 3px solid var(--threat); }
   .swot-quad h3 { margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
   .swot-quad ul { margin: 0; padding-left: 18px; }
-  .swot-quad li { margin-bottom: 9px; font-size: 13.5px; }
+  .swot-quad li { margin-bottom: 9px; font-size: 13.5px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
   .chart { position: relative; width: 100%; aspect-ratio: 1; background:
     linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
     var(--surface-2);
     background-size: 25% 25%, 25% 25%; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 4px; }
-  .chart .axis-label { position: absolute; font-size: 11px; color: var(--muted); }
+  .chart .axis-label { position: absolute; font-size: 11px; color: var(--muted); opacity: 0; transition: opacity .5s ease .3s; }
+  .chart.in-view .axis-label { opacity: 1; }
   .chart .axis-label.x-low { left: 10px; bottom: 10px; } .chart .axis-label.x-high { right: 10px; bottom: 10px; }
   .chart .axis-label.y-low { left: 10px; bottom: 10px; writing-mode: vertical-rl; } .chart .axis-label.y-high { left: 10px; top: 10px; writing-mode: vertical-rl; }
   .chart .point { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: var(--opportunity);
-                  border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-50%, 50%); }
+                  border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.25);
+                  transform: translate(-50%, 50%) scale(0); opacity: 0;
+                  transition: transform .5s cubic-bezier(.34,1.56,.64,1), opacity .35s ease; }
+  .chart.in-view .point { transform: translate(-50%, 50%) scale(1); opacity: 1; }
   .chart .point.target { background: var(--accent); width: 14px; height: 14px; }
-  .chart .point-label { position: absolute; font-size: 11.5px; font-weight: 600; transform: translate(-50%, 130%); white-space: nowrap; }
+  .chart .point-label { position: absolute; font-size: 11.5px; font-weight: 600; transform: translate(-50%, 130%); white-space: nowrap;
+                         opacity: 0; transition: opacity .4s ease; }
+  .chart.in-view .point-label { opacity: 1; }
   .gaps-list { font-size: 13px; color: var(--muted); }
+
+  /* Sticky in-page nav (structure: "what's on this page, jump there") */
+  .section-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; overflow-x: auto;
+    padding: 10px 0; margin: 4px 0 0; background: var(--bg); border-bottom: 1px solid transparent; }
+  .section-nav.docked { border-bottom-color: var(--line); }
+  .section-nav .nav-link { flex: none; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    padding: 6px 12px; border-radius: 999px; white-space: nowrap; transition: color .15s, background .15s; }
+  .section-nav .nav-link:hover { color: var(--ink); text-decoration: none; }
+  .section-nav .nav-link.active { color: var(--accent); background: var(--accent-soft); }
+
+  /* Sources: a small trigger instead of an always-visible list — hover,
+     click, or keyboard focus reveal it; nothing else on the page changes. */
+  .src-pop { position: relative; display: inline-flex; }
+  .src-trigger { font: inherit; font-size: 11.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+    border: none; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+  .src-panel { position: absolute; left: 0; top: calc(100% + 6px); z-index: 10; width: max(260px, 100%); max-width: 360px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-2);
+    padding: 10px 12px; opacity: 0; pointer-events: none; transform: translateY(4px);
+    transition: opacity .12s ease, transform .12s ease; }
+  .src-pop:hover .src-panel, .src-pop:focus-within .src-panel { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .src-panel ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
+  .src-panel li { margin-bottom: 6px; }
+  .src-panel li:last-child { margin-bottom: 0; }
+  .src-panel a { color: inherit; }
+
+  /* Scroll-triggered reveal ("float in") */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .reveal.in-view { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal, .chart .point, .chart .point-label, .chart .axis-label { transition: none !important; opacity: 1 !important; transform: none !important; }
+  }
   @media print {
-    .topbar, .report-actions { display: none; }
+    .topbar, .report-actions, .section-nav { display: none; }
     body { padding: 0; }
     .page { max-width: none; }
+    .reveal, .chart .point, .chart .point-label, .chart .axis-label { opacity: 1 !important; transform: none !important; }
   }
 </style>
 </head>
@@ -79,30 +118,33 @@
 </div>
 <div class="page">
 
+{% macro sources_popover(claim_ids) %}
+  {% set items = [] %}
+  {% for cid in claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}{% set _ = items.append(cl) %}{% endif %}{% endfor %}
+  {% if items %}
+  <span class="src-pop">
+    <button type="button" class="src-trigger" aria-haspopup="true">{{ items|length }} source{{ "s" if items|length != 1 else "" }}</button>
+    <span class="src-panel">
+      <ul>
+        {% for cl in items %}<li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}" target="_blank" rel="noopener">{{ cl.source_type }}</a></li>{% endfor %}
+      </ul>
+    </span>
+  </span>
+  {% endif %}
+{% endmacro %}
+
 {% macro citation(c) %}
   {% if c %}
     <div class="citation">
       {% if c.confidence.score >= 0.8 %}<span class="badge trust-high">high trust</span>
       {% elif c.confidence.score >= 0.5 %}<span class="badge trust-medium">medium trust</span>
       {% else %}<span class="badge trust-low">low trust</span>{% endif %}
-      <span class="confidence">{{ "%.0f"|format(c.confidence.score * 100) }}% confidence{% if c.confidence.verified %} · verified{% endif %} · {{ c.confidence.corroboration }} source{{ "s" if c.confidence.corroboration != 1 else "" }}</span>
-      <ul class="sources">
-        {% for cid in c.claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}
-          <li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}">{{ cl.source_type }}</a></li>
-        {% endif %}{% endfor %}
-      </ul>
+      <span class="confidence">{{ "%.0f"|format(c.confidence.score * 100) }}%{% if c.confidence.verified %} · verified{% endif %}</span>
+      {{ sources_popover(c.claim_ids) }}
     </div>
   {% else %}
     <span class="gap">not found</span>
   {% endif %}
-{% endmacro %}
-
-{% macro finding_sources(claim_ids) %}
-  <ul class="sources">
-    {% for cid in claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}
-      <li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}">{{ cl.source_type }}</a></li>
-    {% endif %}{% endfor %}
-  </ul>
 {% endmacro %}
 
 <div class="report-header">
@@ -113,9 +155,21 @@
   </div>
 </div>
 
+<nav class="section-nav" id="section-nav">
+  <a href="#snapshot" class="nav-link">Snapshot</a>
+  {% if report.five_forces.forces %}<a href="#five-forces" class="nav-link">Five Forces</a>{% endif %}
+  {% if report.bmc.blocks %}<a href="#bmc" class="nav-link">Business Model</a>{% endif %}
+  {% if report.vrio %}<a href="#vrio" class="nav-link">VRIO</a>{% endif %}
+  {% if report.positioning.companies %}<a href="#positioning" class="nav-link">Positioning</a>{% endif %}
+  <a href="#swot" class="nav-link">SWOT</a>
+  <a href="#recommendations" class="nav-link">Recommendations</a>
+  {% if report.gaps %}<a href="#gaps" class="nav-link">Not found</a>{% endif %}
+</nav>
+
+<section id="snapshot">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 4v5"/></svg></span>Company snapshot</h2>
 {% for c in report.companies %}
-  <div class="card {{ 'target' if c.is_target else '' }}">
+  <div class="card reveal {{ 'target' if c.is_target else '' }}">
     <h3>{{ c.name }}{% if c.is_target %} (target){% endif %}</h3>
     <div class="field"><span class="field-label">Description</span>{{ citation(c.description) }}</div>
     {% if c.industry or c.ticker %}
@@ -141,36 +195,42 @@
     {% endif %}
   </div>
 {% endfor %}
+</section>
 
 {% if report.five_forces.forces %}
+<section id="five-forces">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M2 12h4"/><path d="M18 12h4"/></svg></span>Five Forces</h2>
 <div class="grid-2">
   {% for f in report.five_forces.forces %}
-    <div class="card">
+    <div class="card reveal">
       <h3>{{ f.force | replace("_", " ") | title }} <span class="badge {{ f.rating }}">{{ f.rating }}</span></h3>
       <p>{{ f.rationale }}</p>
-      {{ finding_sources(f.claim_ids) }}
+      {{ sources_popover(f.claim_ids) }}
     </div>
   {% endfor %}
 </div>
+</section>
 {% endif %}
 
 {% if report.bmc.blocks %}
+<section id="bmc">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Business Model Canvas</h2>
 <div class="grid-3">
   {% for b in report.bmc.blocks %}
-    <div class="card">
+    <div class="card reveal">
       <h3>{{ b.block | replace("_", " ") | title }}</h3>
       <p>{{ b.statement }}</p>
-      {{ finding_sources(b.claim_ids) }}
+      {{ sources_popover(b.claim_ids) }}
     </div>
   {% endfor %}
 </div>
+</section>
 {% endif %}
 
 {% if report.vrio %}
+<section id="vrio">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l9 4.5v9L12 20l-9-4.5v-9z"/></svg></span>VRIO</h2>
-<table>
+<table class="card reveal">
   <tr><th>Resource</th><th>V</th><th>R</th><th>I</th><th>O</th><th>Implication</th><th>Rationale</th></tr>
   {% for r in report.vrio %}
   <tr>
@@ -180,15 +240,17 @@
     <td>{{ "✓" if r.inimitable else "✗" }}</td>
     <td>{{ "✓" if r.organized else "✗" }}</td>
     <td><span class="badge {{ r.competitive_implication }}">{{ r.competitive_implication | replace("_", " ") }}</span></td>
-    <td>{{ r.rationale }}{{ finding_sources(r.claim_ids) }}</td>
+    <td>{{ r.rationale }} {{ sources_popover(r.claim_ids) }}</td>
   </tr>
   {% endfor %}
 </table>
+</section>
 {% endif %}
 
 {% if report.positioning.companies %}
+<section id="positioning">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="7" cy="17" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="14" cy="14" r="2"/><path d="M3 21h18"/><path d="M3 3v18"/></svg></span>Positioning</h2>
-<div class="chart">
+<div class="chart reveal">
   <span class="axis-label x-low">{{ report.positioning.x_axis.low_label }}</span>
   <span class="axis-label x-high">{{ report.positioning.x_axis.high_label }}</span>
   <span class="axis-label y-low">{{ report.positioning.y_axis.low_label }}</span>
@@ -196,52 +258,102 @@
   {% for p in report.positioning.companies %}
     {% set name = (report.companies | selectattr("company_id", "equalto", p.company_id) | first).name %}
     {% set is_target = (report.companies | selectattr("company_id", "equalto", p.company_id) | first).is_target %}
-    <div class="point {{ 'target' if is_target else '' }}" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%;"></div>
-    <div class="point-label" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%;">{{ name }}</div>
+    {% set delay = loop.index0 * 90 %}
+    <div class="point {{ 'target' if is_target else '' }}" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%; transition-delay: {{ delay }}ms;"></div>
+    <div class="point-label" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%; transition-delay: {{ delay + 150 }}ms;">{{ name }}</div>
   {% endfor %}
 </div>
 <p class="meta">{{ report.positioning.x_axis.name }} (x) vs. {{ report.positioning.y_axis.name }} (y)</p>
+</section>
 {% endif %}
 
+<section id="swot">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></span>SWOT</h2>
 <div class="grid-2">
-  <div class="swot-quad strengths"><h3>Strengths</h3><ul>
-    {% for item in report.swot.strengths %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+  <div class="swot-quad strengths reveal"><h3>Strengths</h3><ul>
+    {% for item in report.swot.strengths %}<li>{{ item.statement }}{{ sources_popover(item.claim_ids) }}</li>{% endfor %}
     {% if not report.swot.strengths %}<li class="gap">none found</li>{% endif %}
   </ul></div>
-  <div class="swot-quad weaknesses"><h3>Weaknesses</h3><ul>
-    {% for item in report.swot.weaknesses %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+  <div class="swot-quad weaknesses reveal"><h3>Weaknesses</h3><ul>
+    {% for item in report.swot.weaknesses %}<li>{{ item.statement }}{{ sources_popover(item.claim_ids) }}</li>{% endfor %}
     {% if not report.swot.weaknesses %}<li class="gap">none found</li>{% endif %}
   </ul></div>
-  <div class="swot-quad opportunities"><h3>Opportunities</h3><ul>
-    {% for item in report.swot.opportunities %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+  <div class="swot-quad opportunities reveal"><h3>Opportunities</h3><ul>
+    {% for item in report.swot.opportunities %}<li>{{ item.statement }}{{ sources_popover(item.claim_ids) }}</li>{% endfor %}
     {% if not report.swot.opportunities %}<li class="gap">none found</li>{% endif %}
   </ul></div>
-  <div class="swot-quad threats"><h3>Threats</h3><ul>
-    {% for item in report.swot.threats %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+  <div class="swot-quad threats reveal"><h3>Threats</h3><ul>
+    {% for item in report.swot.threats %}<li>{{ item.statement }}{{ sources_popover(item.claim_ids) }}</li>{% endfor %}
     {% if not report.swot.threats %}<li class="gap">none found</li>{% endif %}
   </ul></div>
 </div>
+</section>
 
+<section id="recommendations">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Recommendations</h2>
 {% for rec in report.recommendations %}
-  <div class="card">
+  <div class="card reveal">
     <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span></h3>
     <p>{{ rec.rationale }}</p>
-    {{ finding_sources(rec.claim_ids) }}
+    {{ sources_popover(rec.claim_ids) }}
   </div>
 {% endfor %}
 {% if not report.recommendations %}<p class="gap">No recommendations yet.</p>{% endif %}
+</section>
 
 {% if report.gaps %}
+<section id="gaps">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span>Not found</h2>
-<p class="gaps-list">
+<p class="gaps-list reveal">
   {% for g in report.gaps %}
     {{ g.field }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}
   {% endfor %}
 </p>
+</section>
 {% endif %}
 
 </div>
+<script>
+(function () {
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll(".section-nav .nav-link"));
+  var sections = navLinks
+    .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
+    .filter(Boolean);
+
+  function setActive(id) {
+    navLinks.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+    });
+  }
+  if (sections.length) setActive(sections[0].id);
+
+  var nav = document.getElementById("section-nav");
+  window.addEventListener("scroll", function () {
+    if (nav) nav.classList.toggle("docked", nav.getBoundingClientRect().top <= 0);
+  }, { passive: true });
+
+  if (!("IntersectionObserver" in window)) {
+    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in-view"); });
+    return;
+  }
+
+  var revealObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("in-view");
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".reveal").forEach(function (el) { revealObserver.observe(el); });
+
+  var spyObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) setActive(entry.target.id);
+    });
+  }, { rootMargin: "-45% 0px -50% 0px" });
+  sections.forEach(function (el) { spyObserver.observe(el); });
+})();
+</script>
 </body>
 </html>
