@@ -24,3 +24,9 @@ Estimated standard-report cost at the design.md §2 token assumption: ~$0.39, in
 - The estimate rests on an assumed 200K-cheap / 50K-strong, 70/30 in/out token split — not yet measured. The eval harness (stage 5) replaces this assumption with real cost logs from the gateway (ADR 0005 step 7); re-run this ADR's numbers once real data exists.
 - If Google prices rise or Gemini accuracy underperforms the golden set in stage 5, swap via gateway config — no code change, per the seam ADR 0005 established.
 - Revisit before any cost-sensitive milestone (stage 5 evals, stage 8 ship) by checking live prices again.
+
+## Addendum (2026-10-22): 2.5 Flash/Pro retired, keys swapped live
+First real run against the live Gemini API (Matan's key, stage 8) hit `404 This model models/gemini-2.5-flash is no longer available to new users`. Google had retired both 2.5 Flash and 2.5 Pro for new API keys by this date. Verified live against the real API (not aggregator pricing pages, per this ADR's own caveat about them):
+- **Cheap tier -> `gemini/gemini-3.8-flash`.** Confirmed working on a free-tier key.
+- **Strong tier -> `gemini/gemini-3.1-pro-preview`.** Confirmed as the correct current model string (`gemini-3-pro-preview` 404s with the same "no longer available" error), but a **free-tier key gets a hard 0 quota for any Pro-tier model** — `generate_content_free_tier_requests, limit: 0` — not a rate limit, a wall. Billing must be enabled on the underlying Google Cloud project for any strong-tier call to succeed; no amount of retrying gets around it.
+- Updated `config.py`'s defaults to the new strings (no decision reversal — same provider, same cheap/strong split, same cost reasoning; just current model names). Re-estimate the $0.39/report figure once billing is on and the eval harness has real cost logs — 3.8 Flash/3.1 Pro pricing wasn't re-verified against this ADR's $0.50 cap in this pass.
