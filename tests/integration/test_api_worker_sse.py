@@ -6,6 +6,7 @@ orchestrator -> progress published to RabbitMQ -> GET /reports/{id}/events
 (SSE) streams it back -> GET /reports/{id} shows the finished report.
 """
 
+import asyncio
 import json
 import uuid
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from faststream.rabbit import RabbitBroker
 from sqlalchemy import delete, select, update
 
 import fieldbrief.worker.app as worker_app_module
@@ -21,14 +23,16 @@ from fieldbrief.agents.llm_schemas import (
     ExtractionResult,
     FrameworkSynthesisResult,
 )
+from fieldbrief.agents.progress import Stage
 from fieldbrief.api.app import app as fastapi_app
-from fieldbrief.api.app import job_broker
+from fieldbrief.api.app import job_broker, progress_event_stream
 from fieldbrief.config import settings
 from fieldbrief.db.models import Claim, Company, Report, ReportClaim, Source
 from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
 from fieldbrief.db.session import SessionFactory, engine
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import CompanyCandidate, CompanyDetails
+from fieldbrief.worker.progress import RabbitProgressSink
 
 OVERVIEW_MARKER = "OVERVIEW_PAGE_MARKER_API_TEST"
 OVERVIEW_HTML = (
@@ -307,6 +311,80 @@ async def test_view_shows_failed_page_not_an_infinite_shell_loop() -> None:
                 # not the progress shell — no SSE connection to loop on
                 assert "EventSource" not in resp.text
                 assert "/refresh" in resp.text
+    finally:
+        async with SessionFactory() as cleanup_session:
+            if created_report_id is not None:
+                await cleanup_session.execute(delete(Report).where(Report.id == created_report_id))
+            if created_company_id is not None:
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
+            await cleanup_session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_progress_event_stream_survives_a_timeout_poll_before_a_message_arrives() -> None:
+    """Regression test for a real bug hit live: asyncio.wait_for cancelling
+    aio_pika's own queue iterator poisons it — the next __anext__() raises a
+    bare StopAsyncIteration, which PEP 479 turns into a RuntimeError that
+    kills the whole SSE response, so the browser's EventSource reconnects
+    into the same crash forever ("connection lost — retrying," for any real
+    report, every time, since the mocked round-trip test above is
+    near-instant by design and never hits the 5s poll timeout at all).
+
+    Iterates progress_event_stream() directly rather than going through
+    FastAPI/httpx: httpx's ASGITransport buffers an entire StreamingResponse
+    until its generator fully *completes* before delivering anything to the
+    client (confirmed by hand — a real browser against real uvicorn flushes
+    each chunk immediately, which is why the original bug was only ever
+    visible live), so it can't exercise a stream that's still open several
+    seconds in. No LLM calls — publishes one progress event directly via
+    RabbitProgressSink, same as the worker does, after deliberately waiting
+    past the SSE loop's 5s timeout so a real timeout-then-continue cycle
+    happens before the message arrives."""
+    company_domain = f"https://slow-{uuid.uuid4().hex[:8]}.example.com/"
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company = await get_or_create_company(session, name="Slow Co", domain=company_domain)
+            created_company_id = company.id
+            report = await create_report(
+                session,
+                user_id=user.id,
+                target_company_id=company.id,
+                tier="quick",
+                status="running",
+            )
+            created_report_id = report.id
+            await session.commit()
+
+        broker = RabbitBroker(settings.rabbitmq_url)
+        await broker.start()
+        try:
+
+            async def publish_after_delay() -> None:
+                await asyncio.sleep(6.0)  # past the SSE loop's 5s poll timeout
+                sink = RabbitProgressSink(report_id=str(created_report_id), broker=broker)
+                await sink.emit(Stage.RESEARCHING, "still going")
+
+            async def read_one_event() -> str:
+                async for chunk in progress_event_stream(created_report_id):
+                    assert chunk.startswith("data: ")
+                    payload = json.loads(chunk[len("data: ") :].strip())
+                    stage: str = payload["stage"]
+                    return stage  # one real event proves the stream survived the timeout
+                raise AssertionError("stream ended with no event")
+
+            results = await asyncio.wait_for(
+                asyncio.gather(read_one_event(), publish_after_delay()), timeout=15.0
+            )
+            assert results[0] == "researching"
+        finally:
+            await broker.stop()
     finally:
         async with SessionFactory() as cleanup_session:
             if created_report_id is not None:
