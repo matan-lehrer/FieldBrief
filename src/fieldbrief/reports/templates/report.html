@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ company_name }} — FieldBrief report</title>
+<style>
+  :root {
+    --ink: #1a1d23; --muted: #5b6270; --line: #e2e5ea; --bg: #ffffff; --panel: #f7f8fa;
+    --low: #1f8a4c; --medium: #b8860b; --high: #c0392b;
+    --strength: #1f8a4c; --weakness: #c0392b; --opportunity: #2563a8; --threat: #b8860b;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         color: var(--ink); background: var(--bg); margin: 0; padding: 32px; line-height: 1.5; }
+  .page { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 36px 0 12px; border-bottom: 2px solid var(--line); padding-bottom: 6px; }
+  h3 { font-size: 15px; margin: 0 0 4px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .card.target { border-left: 4px solid var(--opportunity); }
+  .field { margin: 10px 0; }
+  .field-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .citation { font-size: 13px; margin-top: 2px; }
+  .confidence { color: var(--muted); font-size: 11px; }
+  .sources { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+  .sources a { color: inherit; }
+  .gap { color: var(--muted); font-style: italic; font-size: 13px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
+  .badge.low, .badge.sustained_advantage, .badge.temporary_advantage { background: var(--low); }
+  .badge.medium, .badge.parity { background: var(--medium); }
+  .badge.high, .badge.competitive_disadvantage { background: var(--high); }
+  .badge.priority-high { background: var(--high); }
+  .badge.priority-medium { background: var(--medium); }
+  .badge.priority-low { background: var(--low); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .swot-quad { border-radius: 8px; padding: 14px; }
+  .swot-quad.strengths { background: color-mix(in srgb, var(--strength) 8%, white); }
+  .swot-quad.weaknesses { background: color-mix(in srgb, var(--weakness) 8%, white); }
+  .swot-quad.opportunities { background: color-mix(in srgb, var(--opportunity) 8%, white); }
+  .swot-quad.threats { background: color-mix(in srgb, var(--threat) 8%, white); }
+  .swot-quad h3 { margin-bottom: 8px; }
+  .swot-quad ul { margin: 0; padding-left: 18px; }
+  .swot-quad li { margin-bottom: 8px; }
+  .chart { position: relative; width: 100%; aspect-ratio: 1; background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; margin-bottom: 4px; }
+  .chart .axis-label { position: absolute; font-size: 11px; color: var(--muted); }
+  .chart .axis-label.x-low { left: 8px; bottom: 8px; } .chart .axis-label.x-high { right: 8px; bottom: 8px; }
+  .chart .axis-label.y-low { left: 8px; bottom: 8px; writing-mode: vertical-rl; } .chart .axis-label.y-high { left: 8px; top: 8px; writing-mode: vertical-rl; }
+  .chart .point { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--opportunity);
+                  transform: translate(-50%, 50%); }
+  .chart .point.target { background: var(--high); }
+  .chart .point-label { position: absolute; font-size: 11px; transform: translate(-50%, 130%); white-space: nowrap; }
+  .gaps-list { font-size: 13px; color: var(--muted); }
+  @media print { body { padding: 0; } .page { max-width: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+{% macro citation(c) %}
+  {% if c %}
+    <div class="citation">
+      <span class="confidence">{{ "%.0f"|format(c.confidence.score * 100) }}% confidence{% if c.confidence.verified %} · verified{% endif %} · {{ c.confidence.corroboration }} source{{ "s" if c.confidence.corroboration != 1 else "" }}</span>
+      <ul class="sources">
+        {% for cid in c.claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}
+          <li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}">{{ cl.source_type }}</a></li>
+        {% endif %}{% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <span class="gap">not found</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro finding_sources(claim_ids) %}
+  <ul class="sources">
+    {% for cid in claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}
+      <li>&ldquo;{{ cl.statement }}&rdquo; — <a href="{{ cl.source_url }}">{{ cl.source_type }}</a></li>
+    {% endif %}{% endfor %}
+  </ul>
+{% endmacro %}
+
+<h1>{{ company_name }}</h1>
+<div class="meta">
+  {{ report.meta.tier | capitalize }} report · data as of {{ report.meta.data_as_of }} ·
+  generated {{ report.meta.generated_at }}
+</div>
+
+<h2>Company snapshot</h2>
+{% for c in report.companies %}
+  <div class="card {{ 'target' if c.is_target else '' }}">
+    <h3>{{ c.name }}{% if c.is_target %} (target){% endif %}</h3>
+    <div class="field"><span class="field-label">Description</span>{{ citation(c.description) }}</div>
+    <div class="field"><span class="field-label">HQ / Founded</span> {{ c.hq or "—" }}{% if c.founded %}, {{ c.founded }}{% endif %}</div>
+    <div class="field"><span class="field-label">Employees</span>{{ citation(c.employees) }}</div>
+    <div class="field"><span class="field-label">Products</span>{{ citation(c.products) }}</div>
+    <div class="field"><span class="field-label">Customer segments</span>{{ citation(c.customer_segments) }}</div>
+    <div class="field"><span class="field-label">Revenue model</span>{{ citation(c.revenue_model) }}</div>
+    <div class="field"><span class="field-label">Revenue</span>{{ citation(c.revenue) }}</div>
+    {% if c.is_target %}
+    <div class="field"><span class="field-label">Profitability</span>{{ citation(c.profitability) }}</div>
+    {% endif %}
+    <div class="field"><span class="field-label">Funding / market cap</span>{{ citation(c.funding_or_cap) }}</div>
+    {% if c.is_target %}
+    <div class="field"><span class="field-label">Recent events</span>{{ citation(c.recent_events) }}</div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if report.five_forces.forces %}
+<h2>Five Forces</h2>
+<div class="grid-2">
+  {% for f in report.five_forces.forces %}
+    <div class="card">
+      <h3>{{ f.force | replace("_", " ") | title }} <span class="badge {{ f.rating }}">{{ f.rating }}</span></h3>
+      <p>{{ f.rationale }}</p>
+      {{ finding_sources(f.claim_ids) }}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if report.bmc.blocks %}
+<h2>Business Model Canvas</h2>
+<div class="grid-3">
+  {% for b in report.bmc.blocks %}
+    <div class="card">
+      <h3>{{ b.block | replace("_", " ") | title }}</h3>
+      <p>{{ b.statement }}</p>
+      {{ finding_sources(b.claim_ids) }}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if report.vrio %}
+<h2>VRIO</h2>
+<table>
+  <tr><th>Resource</th><th>V</th><th>R</th><th>I</th><th>O</th><th>Implication</th><th>Rationale</th></tr>
+  {% for r in report.vrio %}
+  <tr>
+    <td>{{ r.resource }}</td>
+    <td>{{ "✓" if r.valuable else "✗" }}</td>
+    <td>{{ "✓" if r.rare else "✗" }}</td>
+    <td>{{ "✓" if r.inimitable else "✗" }}</td>
+    <td>{{ "✓" if r.organized else "✗" }}</td>
+    <td><span class="badge {{ r.competitive_implication }}">{{ r.competitive_implication | replace("_", " ") }}</span></td>
+    <td>{{ r.rationale }}{{ finding_sources(r.claim_ids) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if report.positioning.companies %}
+<h2>Positioning</h2>
+<div class="chart">
+  <span class="axis-label x-low">{{ report.positioning.x_axis.low_label }}</span>
+  <span class="axis-label x-high">{{ report.positioning.x_axis.high_label }}</span>
+  <span class="axis-label y-low">{{ report.positioning.y_axis.low_label }}</span>
+  <span class="axis-label y-high">{{ report.positioning.y_axis.high_label }}</span>
+  {% for p in report.positioning.companies %}
+    {% set name = (report.companies | selectattr("company_id", "equalto", p.company_id) | first).name %}
+    {% set is_target = (report.companies | selectattr("company_id", "equalto", p.company_id) | first).is_target %}
+    <div class="point {{ 'target' if is_target else '' }}" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%;"></div>
+    <div class="point-label" style="left: {{ (p.x * 100) | round(1) }}%; bottom: {{ (p.y * 100) | round(1) }}%;">{{ name }}</div>
+  {% endfor %}
+</div>
+<p class="meta">{{ report.positioning.x_axis.name }} (x) vs. {{ report.positioning.y_axis.name }} (y)</p>
+{% endif %}
+
+<h2>SWOT</h2>
+<div class="grid-2">
+  <div class="swot-quad strengths"><h3>Strengths</h3><ul>
+    {% for item in report.swot.strengths %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+    {% if not report.swot.strengths %}<li class="gap">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-quad weaknesses"><h3>Weaknesses</h3><ul>
+    {% for item in report.swot.weaknesses %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+    {% if not report.swot.weaknesses %}<li class="gap">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-quad opportunities"><h3>Opportunities</h3><ul>
+    {% for item in report.swot.opportunities %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+    {% if not report.swot.opportunities %}<li class="gap">none found</li>{% endif %}
+  </ul></div>
+  <div class="swot-quad threats"><h3>Threats</h3><ul>
+    {% for item in report.swot.threats %}<li>{{ item.statement }}{{ finding_sources(item.claim_ids) }}</li>{% endfor %}
+    {% if not report.swot.threats %}<li class="gap">none found</li>{% endif %}
+  </ul></div>
+</div>
+
+<h2>Recommendations</h2>
+{% for rec in report.recommendations %}
+  <div class="card">
+    <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span></h3>
+    <p>{{ rec.rationale }}</p>
+    {{ finding_sources(rec.claim_ids) }}
+  </div>
+{% endfor %}
+{% if not report.recommendations %}<p class="gap">No recommendations yet.</p>{% endif %}
+
+{% if report.gaps %}
+<h2>Not found</h2>
+<p class="gaps-list">
+  {% for g in report.gaps %}
+    {{ g.field }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}
+  {% endfor %}
+</p>
+{% endif %}
+
+</div>
+</body>
+</html>

@@ -41,7 +41,7 @@ FastAPI endpoints, RabbitMQ queue + FastStream worker, LangGraph checkpointing, 
 
 ## 7. Report UI and PDF  ← current
 Jinja2 + HTMX pages, progressive sections, Playwright PDF.
-**Done when:** README-ready screenshots.
+**Done when:** README-ready screenshots. Built and tested: `reports/render.py` + `reports/templates/report.html` (company snapshots, Five Forces, BMC, VRIO, positioning scatter, SWOT, recommendations, gaps, all with resolved citations), `GET /reports/{id}/view` (finished report, or a live SSE progress shell while running), `GET /reports/{id}/pdf` (Playwright). **Literal done-when not yet met:** no screenshot exists. Rendering is verified correct (9 tests: Jinja2 output, citation resolution, the full API pipeline's `/view` response) but there's no browser in this sandbox to open the page and capture one, and Playwright's Chromium can't launch here either (missing system shared libraries, no root to install them — `playwright install --with-deps` needs sudo). Take the actual screenshot by opening a real report's `/view` URL in your own browser once you've run a real report.
 
 ## 8. Polish and ship
 Tiers, refresh, partial-report handling, README with demo report, design doc + ADRs final, demo video.

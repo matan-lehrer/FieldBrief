@@ -25,6 +25,7 @@ from fieldbrief.api.app import app as fastapi_app
 from fieldbrief.api.app import job_broker
 from fieldbrief.config import settings
 from fieldbrief.db.models import Claim, Company, Report, ReportClaim, Source
+from fieldbrief.db.repositories import create_report, get_or_create_cli_user, get_or_create_company
 from fieldbrief.db.session import SessionFactory, engine
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import CompanyCandidate, CompanyDetails
@@ -142,6 +143,11 @@ async def test_report_runs_through_api_with_live_sse_progress() -> None:
                     assert body["status"] in ("done", "partial")
                     assert body["report_json"]["companies"][0]["name"] == "Acme Corp"
 
+                    view_resp = await client.get(f"/reports/{report_id}/view")
+                    assert view_resp.status_code == 200
+                    assert "Acme Corp" in view_resp.text
+                    assert "Makes widgets." in view_resp.text
+
                     # idempotency: same key returns the same report, doesn't create another
                     dup_resp = await client.post(
                         "/reports",
@@ -178,6 +184,51 @@ async def test_report_runs_through_api_with_live_sse_progress() -> None:
                 )
                 if source_ids:
                     await cleanup_session.execute(delete(Source).where(Source.id.in_(source_ids)))
+                await cleanup_session.execute(
+                    delete(Company).where(Company.id == created_company_id)
+                )
+            await cleanup_session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_view_shows_progress_shell_for_an_unfinished_report() -> None:
+    """The other branch of /view — a report still running gets the SSE-driven
+    progress shell, not a 404 or a half-rendered report."""
+    company_domain = f"https://pending-{uuid.uuid4().hex[:8]}.example.com/"
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            company = await get_or_create_company(session, name="Pending Co", domain=company_domain)
+            created_company_id = company.id
+            report = await create_report(
+                session,
+                user_id=user.id,
+                target_company_id=company.id,
+                tier="quick",
+                status="running",
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            transport = httpx.ASGITransport(app=fastapi_app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://test",
+                headers={"X-API-Key": settings.api_key},
+            ) as client:
+                resp = await client.get(f"/reports/{report.id}/view")
+                assert resp.status_code == 200
+                assert "Generating your report" in resp.text
+                assert f"/reports/{report.id}/events" in resp.text
+    finally:
+        async with SessionFactory() as cleanup_session:
+            if created_report_id is not None:
+                await cleanup_session.execute(delete(Report).where(Report.id == created_report_id))
+            if created_company_id is not None:
                 await cleanup_session.execute(
                     delete(Company).where(Company.id == created_company_id)
                 )
