@@ -1466,6 +1466,100 @@ async def test_research_company_degrades_to_partial_snapshot_on_budget_exhaustio
             await _cleanup_company(created_company_id, created_report_id)
 
 
+@pytest.mark.asyncio
+async def test_research_summary_counts_sources_cited_from_a_cache_hit() -> None:
+    """A field satisfied by an already-fresh claim from an earlier run
+    never re-enters research_node (no new gap, no new extraction) — but
+    the finished report still cites that claim. research_summary's source
+    counts must come from everything the report actually cites, not just
+    claims extracted during this run's graph execution, or a cache-heavy
+    report would show an empty source-type breakdown despite real,
+    visible citations (caught via a live CLI run against Wix)."""
+
+    async def fake_search_empty(
+        client: object, searxng_url: str, query: str, limit: int = 10
+    ) -> list[SearchResult]:
+        return []
+
+    async def fake_fetch_none(self: Fetcher, url: str) -> str | None:
+        return None
+
+    def route(*args: object, **kwargs: object) -> SimpleNamespace:
+        schema = kwargs["response_format"]
+        if schema is FrameworkSynthesisResult:
+            return _fake_llm_response(FrameworkSynthesisResult().model_dump_json())
+        raise AssertionError(f"unexpected schema {schema}")
+
+    created_company_id: uuid.UUID | None = None
+    created_report_id: uuid.UUID | None = None
+    try:
+        async with SessionFactory() as session:
+            user = await get_or_create_cli_user(session)
+            domain = f"https://cache-hit-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Cache Hit Co", domain=domain)
+            created_company_id = company.id
+            source, _ = await get_or_create_source(
+                session, url=domain, content_hash="h1", source_type="filing"
+            )
+            claim = await add_claim(
+                session,
+                company_id=company.id,
+                source_id=source.id,
+                field="profile.description",
+                statement="Makes widgets.",
+                value={},
+                snippet="",
+                relevance=0.9,
+            )
+            claim.verified = True
+            await session.flush()
+            await session.commit()
+
+            budget = Budget(limit_usd=5.0)
+            gateway = LLMGateway()
+            fetcher = Fetcher()
+            http_client = httpx.AsyncClient()
+            wikidata_client = httpx.AsyncClient()
+
+            report = await create_report(
+                session, user_id=user.id, target_company_id=company.id, tier="quick"
+            )
+            created_report_id = report.id
+            await session.commit()
+
+            with (
+                patch.object(Fetcher, "fetch", fake_fetch_none),
+                patch("fieldbrief.agents.nodes.search", new=fake_search_empty),
+                patch(
+                    "fieldbrief.llm.gateway.litellm.acompletion", new=AsyncMock(side_effect=route)
+                ),
+                patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+            ):
+                report_json = await run_report(
+                    session=session,
+                    gateway=gateway,
+                    budget=budget,
+                    fetcher=fetcher,
+                    http_client=http_client,
+                    wikidata_client=wikidata_client,
+                    searxng_url="http://unused.invalid",
+                    report_id=report.id,
+                    target_company=company,
+                    tier="quick",
+                    competitor_count=0,
+                )
+            await http_client.aclose()
+            await wikidata_client.aclose()
+            await fetcher.aclose()
+
+            assert report_json["companies"][0]["description"]["claim_ids"] == [str(claim.id)]
+            assert report_json["meta"]["research_summary"]["source_type_counts"] == {"filing": 1}
+            await session.commit()
+    finally:
+        if created_company_id is not None:
+            await _cleanup_company(created_company_id, created_report_id)
+
+
 def test_competitor_coverage_distinguishes_none_partial_full_and_not_requested() -> None:
     """A single-company table must never be presented as a competitive
     comparison — the report needs to know which of these actually happened."""
