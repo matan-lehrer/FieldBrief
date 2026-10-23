@@ -25,7 +25,9 @@ class Confidence(BaseModel):
     score: float = Field(ge=0, le=1)
     corroboration: int
     verified: bool
-    status: Literal["strong", "supported", "unverified", "conflicting"] = "supported"
+    status: Literal["strong", "supported", "unverified", "conflicting", "different_scope"] = (
+        "supported"
+    )
 
 
 class Citation(BaseModel):
@@ -46,7 +48,8 @@ class CompanySnapshot(BaseModel):
     revenue_model: Citation | None = None
     revenue: Citation | None = None
     profitability: Citation | None = None
-    funding_or_cap: Citation | None = None
+    funding: Citation | None = None
+    market_cap_or_valuation: Citation | None = None
     recent_events: Citation | None = None
     freshness: Freshness
 

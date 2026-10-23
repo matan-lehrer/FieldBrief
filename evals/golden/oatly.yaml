@@ -14,8 +14,11 @@ facts:
   financials.revenue:
     value: "Q2 2026 revenue $240.1M (+15% YoY, beat $219.5M estimate)"
     source_url: https://stockanalysis.com/stocks/OTLY/
-  financials.funding_or_cap:
-    value: "Public (NASDAQ: OTLY), small-cap; not expected to be cash-flow-positive for full-year 2026"
+  financials.market_cap_or_valuation:
+    value: "Public (NASDAQ: OTLY), small-cap"
+    source_url: https://stockanalysis.com/stocks/OTLY/
+  financials.profitability:
+    value: "Not expected to be cash-flow-positive for full-year 2026"
     source_url: https://stockanalysis.com/stocks/OTLY/
 
 competitors:

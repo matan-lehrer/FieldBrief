@@ -11,10 +11,13 @@ facts:
     value: "Net revenue ~$5.12B (2024, +34% YoY); gross revenue est. ~$19.4B (2025); $1.9T total payment volume (2025)"
     source_url: https://www.dealstreetasia.com/stories/stripe-valuation-employee-share-sale-473875
     tolerance: "gross revenue figure is a press estimate, not an audited disclosure"
-  financials.funding_or_cap:
-    value: "~$159B valuation per Feb 2026 employee tender offer; total funding raised ~$9.4-9.8B (private)"
+  financials.market_cap_or_valuation:
+    value: "~$159B valuation per Feb 2026 employee tender offer (private)"
     source_url: https://www.dealstreetasia.com/stories/stripe-valuation-employee-share-sale-473875
     tolerance: "a lower $106.7B figure also circulates — unclear timing/context, treat as a known gap"
+  financials.funding:
+    value: "Total funding raised ~$9.4-9.8B"
+    source_url: https://www.dealstreetasia.com/stories/stripe-valuation-employee-share-sale-473875
 
 competitors:
   - Adyen

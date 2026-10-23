@@ -14,7 +14,7 @@ facts:
   financials.revenue:
     value: "TTM ~$14.7B as of 2026-03-31; Q2 2026 revenue $4.45B"
     source_url: https://stockanalysis.com/stocks/DASH/
-  financials.funding_or_cap:
+  financials.market_cap_or_valuation:
     value: "Public (NASDAQ: DASH); market cap figures ranged ~$65.6B-$91.9B across 2026 snapshots"
     source_url: https://stockanalysis.com/stocks/DASH/
     tolerance: "very wide — verify against a live quote, do not average"

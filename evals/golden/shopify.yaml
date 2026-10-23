@@ -15,7 +15,7 @@ facts:
     value: "TTM ~$12.4-13.2B"
     source_url: https://finance.yahoo.com/quote/SHOP/
     tolerance: "wide — sources disagree"
-  financials.funding_or_cap:
+  financials.market_cap_or_valuation:
     value: "Public (NASDAQ: SHOP); market cap figures ranged ~$147B-$200B across 2026 snapshots"
     source_url: https://finance.yahoo.com/quote/SHOP/
     tolerance: "very wide — verify against a live quote, do not average"

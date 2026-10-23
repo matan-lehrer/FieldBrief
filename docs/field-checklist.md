@@ -18,7 +18,8 @@
 | `offering.value_prop` | Claimed differentiation | BMC, VRIO | Standard | T, C |
 | `channels.go_to_market` | Sales motion | BMC | Standard | T |
 | `financials.profitability` | Margins / net income / burn | Snapshot, SWOT | Standard | T |
-| `financials.funding_or_cap` | Funding (private) / market cap (public) | Snapshot | Standard | T, C |
+| `financials.funding` | Private funding raised to date | Snapshot | Standard | T, C |
+| `financials.market_cap_or_valuation` | Market cap (public) / valuation (private) | Snapshot | Standard | T, C |
 | `resources.advantages` | Brand, IP, network effects, data, switching costs | VRIO | Standard | T |
 | `market.forces` | Buyers, suppliers, substitutes, entry barriers | Five Forces | Standard | T |
 | `environment.regulation` | Relevant regulation | PESTEL-lite (Threats) | Standard | T |
@@ -35,3 +36,4 @@
 ## Resolved
 - `market.forces` stays one field; claims tag `value.force` to identify which of the five forces they support (ADR 0007).
 - `resources.advantages` stays one field; claims tag `value.resource` to identify which resource they support (ADR 0007).
+- `financials.funding_or_cap` split into `financials.funding` and `financials.market_cap_or_valuation` — the two were different facts (money raised vs. what the company is worth) and conflating them produced incoherent report text (ADR 0015). `financials.revenue`, `financials.funding`, and `financials.market_cap_or_valuation` claims tag `value.entity_name`/`value.currency`/`value.period`/`value.scope` when the source states them, so confidence scoring can tell a subsidiary's standalone figure apart from its parent's consolidated one instead of silently comparing them as the same number (ADR 0015).

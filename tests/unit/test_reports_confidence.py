@@ -143,3 +143,78 @@ def test_single_verified_source_status_is_supported() -> None:
     citation = compute_citation([claim], {source.id: source})
 
     assert citation.confidence.status == "supported"
+
+
+def test_claims_for_different_entities_are_different_scope_not_conflicting() -> None:
+    """A subsidiary's standalone revenue and its parent's consolidated
+    revenue aren't a 'conflict' just because they share a field name and
+    disagree numerically — they're two different facts (the Synamedia
+    regression: £0-1M standalone vs. a much larger group-wide figure)."""
+    source1 = _source("filing")
+    source2 = _source("filing")
+    claim1 = _claim(
+        source1.id,
+        relevance=1.0,
+        verified=True,
+        value={
+            "amount_usd": 500_000,
+            "entity_name": "Synamedia Holdings Limited",
+            "scope": "standalone",
+        },
+    )
+    claim2 = _claim(
+        source2.id,
+        relevance=1.0,
+        verified=True,
+        value={
+            "amount_usd": 400_000_000,
+            "entity_name": "Synamedia Group",
+            "scope": "consolidated",
+        },
+    )
+
+    citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
+
+    assert citation.confidence.status == "different_scope"
+
+
+def test_claims_for_the_same_entity_still_conflict_normally() -> None:
+    """Scope tagging must not suppress a genuine conflict between two
+    claims that actually describe the same entity/period/currency."""
+    source1 = _source("news")
+    source2 = _source("news")
+    claim1 = _claim(
+        source1.id,
+        relevance=0.9,
+        verified=True,
+        value={"amount_usd": 10_000_000, "entity_name": "Acme Inc", "scope": "standalone"},
+    )
+    claim2 = _claim(
+        source2.id,
+        relevance=0.9,
+        verified=True,
+        value={"amount_usd": 50_000_000, "entity_name": "Acme Inc", "scope": "standalone"},
+    )
+
+    citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
+
+    assert citation.confidence.status == "conflicting"
+
+
+def test_scope_tags_only_block_comparison_when_they_actually_disagree() -> None:
+    """A claim with no scope tags at all (unknown) must still be comparable
+    against one that does have them — unknown is compatible with anything,
+    it just isn't informative either way."""
+    source1 = _source("official")
+    source2 = _source("news")
+    claim1 = _claim(source1.id, relevance=1.0, verified=True, value={"amount_usd": 10_000_000})
+    claim2 = _claim(
+        source2.id,
+        relevance=0.9,
+        verified=True,
+        value={"amount_usd": 10_200_000, "entity_name": "Acme Inc"},
+    )
+
+    citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
+
+    assert citation.confidence.status == "strong"

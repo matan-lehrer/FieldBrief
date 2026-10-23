@@ -16,10 +16,13 @@ facts:
     value: "~$3.3-4.0B annualized (2025-2026 estimates)"
     source_url: https://getlatka.com/companies/canva
     tolerance: "estimate, wide range"
-  financials.funding_or_cap:
-    value: "Valuation ~$39.6-42B (2025-2026 secondary sales); total funding raised ~$2.4-2.5B (private)"
+  financials.market_cap_or_valuation:
+    value: "Valuation ~$39.6-42B (2025-2026 secondary sales, private)"
     source_url: https://getlatka.com/companies/canva
     tolerance: "secondary-market valuations vary; 2021 peak was >$60B"
+  financials.funding:
+    value: "Total funding raised ~$2.4-2.5B"
+    source_url: https://getlatka.com/companies/canva
 
 competitors:
   - Figma

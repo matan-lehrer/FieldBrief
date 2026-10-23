@@ -13,13 +13,28 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
     "offering.products": "Main products or services offered",
     "customers.segments": "Who buys from this company (customer segments)",
     "revenue.model": "How the company makes money",
-    "financials.revenue": "Latest reported revenue and growth, if public or disclosed",
+    "financials.revenue": (
+        "Latest reported revenue and growth, if public or disclosed — tag "
+        "value.entity_name (the exact legal/reporting entity the figure is for), "
+        "value.currency (ISO code), value.period (e.g. 'FY2024', 'TTM Q2 2026'), "
+        "and value.scope ('consolidated' or 'standalone') whenever the source says — "
+        "never assume a parent's figures apply to a subsidiary, or vice versa"
+    ),
     "events.recent": "Notable news or events in roughly the last 12 months",
     "pricing.model": "Price points, tiers, free plan",
     "offering.value_prop": "Claimed differentiation vs. competitors",
     "channels.go_to_market": "Sales motion (self-serve, sales-led, etc.)",
     "financials.profitability": "Margins, net income, or burn rate",
-    "financials.funding_or_cap": "Funding raised (private) or market cap (public)",
+    "financials.funding": (
+        "Private funding raised to date (rounds, total) — NOT market cap or a "
+        "valuation. Tag value.entity_name and value.currency the same way as revenue"
+    ),
+    "financials.market_cap_or_valuation": (
+        "Public market capitalization, OR a private valuation from a funding "
+        "round/secondary sale/acquisition — NOT cumulative funding raised. Tag "
+        "value.entity_name, value.currency, and value.period (the date or event "
+        "the figure is as of)"
+    ),
     "resources.advantages": (
         "Brand, IP, network effects, data, or switching costs that are hard to copy — "
         "tag which specific resource via value.resource, e.g. {'resource': 'network effects'}"
@@ -60,7 +75,12 @@ def extraction_prompt(company_name: str, page_text: str, fields: list[str]) -> l
         "of the company's business model, set bmc_block to the matching Business Model "
         "Canvas block (segments, value_propositions, channels, customer_relationships, "
         "revenue_streams, key_resources, key_activities, key_partners, cost_structure) — "
-        "leave it unset if none fits."
+        "leave it unset if none fits. "
+        "Money raised (funding) and what the company is worth (market cap or "
+        "valuation) are different facts — never fold one into the other, and if "
+        "the page states a figure without saying which entity/period/currency it "
+        "covers, extract it anyway but leave the matching value.* tag unset rather "
+        "than guessing."
     )
     user = (
         f"Company: {company_name}\n\n"
