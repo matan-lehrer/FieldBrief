@@ -152,10 +152,20 @@ class SWOT(BaseModel):
 class Recommendation(BaseModel):
     statement: str
     rationale: str
+    action: str
+    expected_benefit: str
+    key_assumption: str
+    next_validation_step: str
     priority: Literal["high", "medium", "low"]
     swot_refs: list[int] = Field(
         description="indices into the SWOT list(s) this recommendation addresses"
     )
+    claim_ids: list[UUID]
+
+
+class CompanyIntroduction(BaseModel):
+    company_id: UUID
+    intro: str
     claim_ids: list[UUID]
 
 
@@ -215,6 +225,7 @@ class AudienceImplications(BaseModel):
 class ReportJSON(BaseModel):
     meta: ReportMeta
     companies: list[CompanySnapshot] = Field(default_factory=list)
+    company_introductions: list[CompanyIntroduction] = Field(default_factory=list)
     executive_brief: list[ExecutiveFinding] = Field(default_factory=list)
     five_forces: FiveForces = Field(default_factory=FiveForces)
     bmc: BusinessModelCanvas = Field(default_factory=BusinessModelCanvas)

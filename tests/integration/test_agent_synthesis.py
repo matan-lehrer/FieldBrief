@@ -405,6 +405,131 @@ async def test_finding_backed_by_a_reported_fact_is_not_flagged(session: AsyncSe
     assert report_json["meta"]["overreach_flags"] == []
 
 
+@pytest.mark.asyncio
+async def test_company_introduction_is_populated_and_grounded(session: AsyncSession) -> None:
+    company, _claim = await _one_claim_company(
+        session, field="profile.description", value={}, claim_type="reported_fact"
+    )
+    result = FrameworkSynthesisResult(
+        company_introductions=[
+            {
+                "company_index": 0,
+                "intro": "Acme sells widgets to small businesses across the region.",
+                "source_claim_indices": [0],
+            }
+        ],
+    )
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert len(report_json["company_introductions"]) == 1
+    intro = report_json["company_introductions"][0]
+    assert intro["company_id"] == str(company.id)
+    assert intro["intro"] == "Acme sells widgets to small businesses across the region."
+    assert intro["claim_ids"]
+
+
+@pytest.mark.asyncio
+async def test_company_introduction_omitted_when_unsupported(session: AsyncSession) -> None:
+    """Interpretation without a claim behind it is invented, not honest —
+    omit the intro entirely rather than invent one with no grounding."""
+    company, _claim = await _one_claim_company(session, field="profile.description", value={})
+    result = FrameworkSynthesisResult(company_introductions=[])
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert report_json["company_introductions"] == []
+
+
+@pytest.mark.asyncio
+async def test_recommendation_carries_its_own_reasoning_chain(session: AsyncSession) -> None:
+    company, _claim = await _one_claim_company(
+        session, field="resources.advantages", value={"resource": "patent"}
+    )
+    result = FrameworkSynthesisResult(
+        vrio=[
+            {
+                "resource": "patent",
+                "valuable": True,
+                "rare": True,
+                "inimitable": True,
+                "organized": True,
+                "rationale": "Hard to copy and fully capitalized on.",
+                "source_claim_indices": [0],
+            }
+        ],
+        recommendations=[
+            {
+                "statement": "Double down on the patented process.",
+                "rationale": "It's a sustained advantage.",
+                "action": "File two defensive continuation patents.",
+                "expected_benefit": "Extends the moat's effective lifespan.",
+                "key_assumption": "Competitors haven't already designed around it.",
+                "next_validation_step": "Run a freedom-to-operate search.",
+                "priority": "high",
+                "source_claim_indices": [0],
+            }
+        ],
+    )
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert len(report_json["recommendations"]) == 1
+    rec = report_json["recommendations"][0]
+    assert rec["action"] == "File two defensive continuation patents."
+    assert rec["expected_benefit"] == "Extends the moat's effective lifespan."
+    assert rec["key_assumption"] == "Competitors haven't already designed around it."
+    assert rec["next_validation_step"] == "Run a freedom-to-operate search."
+
+
 def test_comparison_table_includes_populated_dimensions_and_drops_empty_ones() -> None:
     """Deterministic reshape of existing CompanySnapshot data (ADR 0014) —
     no new research, no new LLM call."""

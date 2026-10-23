@@ -79,6 +79,16 @@
 {% set weak_brief_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "executive_brief") | map(attribute="statement") | list %}
 {% set weak_rec_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "recommendations") | map(attribute="statement") | list %}
 
+{% if report.company_introductions %}
+{% for intro in report.company_introductions %}
+  {% set co = (report.companies | selectattr("company_id", "equalto", intro.company_id) | first) %}
+  <div class="card{{ ' target' if co and co.is_target else '' }}">
+    {% if report.companies | length > 1 %}<h3>{{ co.name if co else "" }}</h3>{% endif %}
+    {{ intro.intro }} {{ refs(intro.claim_ids) }}
+  </div>
+{% endfor %}
+{% endif %}
+
 {% if report.executive_brief %}
 <h2>Executive brief</h2>
 {% for finding in report.executive_brief %}
@@ -206,9 +216,13 @@
     <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span>{% if rec.statement in weak_rec_statements %}<span class="badge overreach-caveat">limited evidence</span>{% endif %}
     <strong>{{ rec.statement }}</strong> {{ refs(rec.claim_ids) }}
     <div class="ink-soft">{{ rec.rationale }}</div>
+    <div class="field"><span class="field-label">Action</span> {{ rec.action }}</div>
+    <div class="field"><span class="field-label">Expected benefit</span> {{ rec.expected_benefit }}</div>
+    <div class="field"><span class="field-label">Key assumption</span> {{ rec.key_assumption }}</div>
+    <div class="field"><span class="field-label">Next validation step</span> {{ rec.next_validation_step }}</div>
   </div>
 {% endfor %}
-{% if not report.recommendations %}<p class="muted">No recommendations yet.</p>{% endif %}
+{% if not report.recommendations %}<p class="muted">Insufficient evidence to recommend action with confidence — see "Not found" below for what's missing.</p>{% endif %}
 
 {% if report.audience_implications %}
 <h2>Implications for {{ report.audience_implications.audience | replace("_", " ") }}</h2>
