@@ -42,6 +42,8 @@
   .how-step .how-icon svg { width: 20px; height: 20px; }
   .how-step h4 { font-size: 13.5px; margin: 0 0 4px; }
   .how-step p { font-size: 12.5px; color: var(--muted); margin: 0; }
+  .scope-note { max-width: 560px; margin: 28px auto 0; text-align: center; font-size: 12.5px;
+    color: var(--muted); line-height: 1.5; }
   @media (max-width: 640px) { .tiers, .how { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -113,6 +115,12 @@
       <h4>Cited report</h4>
     </div>
   </div>
+
+  <p class="scope-note fade-in">
+    Research is drawn from public web search, SEC filings, and Wikidata — every claim links
+    back to where it came from. FieldBrief doesn't have access to private data, and an honest
+    "not found" is a normal, expected part of a report, not a bug — it's shown, never hidden.
+  </p>
 </div>
 
 <script>

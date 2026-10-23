@@ -112,6 +112,32 @@
 </div>
 <div class="page">
 
+{% set EVIDENCE_STATUS_HELP = {
+  "strong": "Multiple independent sources agree on this",
+  "supported": "Backed by a verified source, not yet independently corroborated",
+  "unverified": "Not yet checked against the source text",
+  "conflicting": "Sources disagree on the figure for this",
+  "different_scope": "Sources describe different entities, periods, or currencies — not directly comparable"
+} %}
+{% set FORCE_RATING_HELP = {
+  "low": "Limited pressure on the company from this force",
+  "medium": "Moderate pressure on the company from this force",
+  "high": "Strong pressure on the company from this force",
+  "insufficient_evidence": "Mentioned too briefly in the evidence to call a direction"
+} %}
+{% set VRIO_HELP = {
+  "competitive_disadvantage": "Not valuable enough to be an advantage",
+  "parity": "Valuable, but not rare — matches competitors rather than beating them",
+  "temporary_advantage": "Valuable and rare, but copyable over time",
+  "unexploited_advantage": "Valuable, rare, and hard to copy, but not yet organized to capture its value",
+  "sustained_advantage": "Valuable, rare, hard to copy, and organized to capture its value"
+} %}
+{% set PRIORITY_HELP = {
+  "high": "Address this first",
+  "medium": "Worth doing, not urgent",
+  "low": "Low urgency given current evidence"
+} %}
+
 {% macro sources_popover(claim_ids) %}
   {% set items = [] %}
   {% for cid in claim_ids %}{% set cl = claims.get(cid) %}{% if cl %}{% set _ = items.append(cl) %}{% endif %}{% endfor %}
@@ -137,7 +163,7 @@
     {% if primary %}<div class="citation-value">{{ primary.statement }}</div>{% endif %}
     {% if primary and primary.scope_label %}<div class="scope-label">{{ primary.scope_label }}</div>{% endif %}
     <div class="citation">
-      <span class="badge status-{{ c.confidence.status | default('supported') }}">{{ (c.confidence.status | default('supported')) | replace('_', ' ') }}</span>
+      <span class="badge status-{{ c.confidence.status | default('supported') }}" title="{{ EVIDENCE_STATUS_HELP.get(c.confidence.status | default('supported'), '') }}">{{ (c.confidence.status | default('supported')) | replace('_', ' ') }}</span>
       {{ sources_popover(c.claim_ids) }}
     </div>
   {% else %}
@@ -166,6 +192,16 @@
     {{ sources_popover(intro.claim_ids) }}
   </div>
 {% endfor %}
+</section>
+{% endif %}
+
+{% set research_summary = report.meta.research_summary | default({}) %}
+{% if research_summary.source_type_counts or research_summary.limitations %}
+<section id="methodology">
+<p class="meta">
+  {% if research_summary.source_type_counts %}Sources reviewed: {% for t, n in research_summary.source_type_counts.items() %}{{ n }} {{ t }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
+  {% if research_summary.limitations %}Limitations: {{ research_summary.limitations | join("; ") }}.{% endif %}
+</p>
 </section>
 {% endif %}
 
@@ -220,7 +256,7 @@
 <div class="grid-2">
   {% for f in report.five_forces.forces %}
     <div class="card reveal">
-      <h3>{{ f.force | replace("_", " ") | title }} <span class="badge {{ f.rating }}">{{ f.rating }}</span></h3>
+      <h3>{{ f.force | replace("_", " ") | title }} <span class="badge {{ f.rating }}" title="{{ FORCE_RATING_HELP.get(f.rating, '') }}">{{ f.rating }}</span></h3>
       <p>{{ f.rationale }}</p>
       {{ sources_popover(f.claim_ids) }}
     </div>
@@ -256,7 +292,7 @@
     <td>{{ "✓" if r.rare else "✗" }}</td>
     <td>{{ "✓" if r.inimitable else "✗" }}</td>
     <td>{{ "✓" if r.organized else "✗" }}</td>
-    <td><span class="badge {{ r.competitive_implication }}">{{ r.competitive_implication | replace("_", " ") }}</span></td>
+    <td><span class="badge {{ r.competitive_implication }}" title="{{ VRIO_HELP.get(r.competitive_implication, '') }}">{{ r.competitive_implication | replace("_", " ") }}</span></td>
     <td>{{ r.rationale }} {{ sources_popover(r.claim_ids) }}</td>
   </tr>
   {% endfor %}
@@ -342,7 +378,7 @@
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Recommendations</h2>
 {% for rec in report.recommendations %}
   <div class="card reveal">
-    <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span>{% if rec.statement in weak_rec_statements %}<span class="badge overreach-caveat" title="This rests only on interpretation or speculation, not a reported fact or an attributed claim">limited evidence</span>{% endif %}</h3>
+    <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}" title="{{ PRIORITY_HELP.get(rec.priority, '') }}">{{ rec.priority }}</span>{% if rec.statement in weak_rec_statements %}<span class="badge overreach-caveat" title="This rests only on interpretation or speculation, not a reported fact or an attributed claim">limited evidence</span>{% endif %}</h3>
     <p>{{ rec.rationale }}</p>
     <div class="field"><span class="field-label">Action</span> {{ rec.action }}</div>
     <div class="field"><span class="field-label">Expected benefit</span> {{ rec.expected_benefit }}</div>

@@ -26,6 +26,8 @@
   th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #e4e4e8; vertical-align: top; }
   th { color: #878c99; font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; }
   tr:last-child td { border-bottom: none; }
+  thead { display: table-header-group; }
+  tbody tr { break-inside: avoid; page-break-inside: avoid; }
   ul.plain { margin: 0; padding-left: 14px; }
   ul.plain li { margin-bottom: 3px; }
   .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 9px;
@@ -89,6 +91,14 @@
 {% endfor %}
 {% endif %}
 
+{% set research_summary = report.meta.research_summary | default({}) %}
+{% if research_summary.source_type_counts or research_summary.limitations %}
+<div class="meta">
+  {% if research_summary.source_type_counts %}Sources reviewed: {% for t, n in research_summary.source_type_counts.items() %}{{ n }} {{ t }}{% if not loop.last %}, {% endif %}{% endfor %}.{% endif %}
+  {% if research_summary.limitations %}Limitations: {{ research_summary.limitations | join("; ") }}.{% endif %}
+</div>
+{% endif %}
+
 {% if report.executive_brief %}
 <h2>Executive brief</h2>
 {% for finding in report.executive_brief %}
@@ -121,27 +131,32 @@
 {% if report.five_forces.forces %}
 <h2>Five Forces</h2>
 <table>
-  <tr><th>Force</th><th>Rating</th><th>Rationale</th></tr>
+  <thead><tr><th>Force</th><th>Rating</th><th>Rationale</th></tr></thead>
+  <tbody>
   {% for f in report.five_forces.forces %}
   <tr><td>{{ f.force | replace("_", " ") }}</td><td><span class="badge {{ f.rating }}">{{ f.rating | replace("_"," ") }}</span></td><td>{{ f.rationale }} {{ refs(f.claim_ids) }}</td></tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 
 {% if report.bmc.blocks %}
 <h2>Business Model Canvas</h2>
 <table>
-  <tr><th>Block</th><th>Statement</th></tr>
+  <thead><tr><th>Block</th><th>Statement</th></tr></thead>
+  <tbody>
   {% for b in report.bmc.blocks %}
   <tr><td>{{ b.block | replace("_", " ") }}</td><td>{{ b.statement }} {{ refs(b.claim_ids) }}</td></tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 
 {% if report.vrio %}
 <h2>VRIO</h2>
 <table>
-  <tr><th>Resource</th><th>V</th><th>R</th><th>I</th><th>O</th><th>Implication</th><th>Rationale</th></tr>
+  <thead><tr><th>Resource</th><th>V</th><th>R</th><th>I</th><th>O</th><th>Implication</th><th>Rationale</th></tr></thead>
+  <tbody>
   {% for r in report.vrio %}
   <tr>
     <td>{{ r.resource }}</td>
@@ -151,6 +166,7 @@
     <td>{{ r.rationale }} {{ refs(r.claim_ids) }}</td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 
@@ -183,7 +199,8 @@
 {% if report.comparison.rows and report.companies | length > 1 %}
 <h2>Comparison</h2>
 <table>
-  <tr><th>Dimension</th>{% for c in report.companies %}<th>{{ c.name }}</th>{% endfor %}</tr>
+  <thead><tr><th>Dimension</th>{% for c in report.companies %}<th>{{ c.name }}</th>{% endfor %}</tr></thead>
+  <tbody>
   {% for row in report.comparison.rows %}
   <tr>
     <td>{{ row.label }}</td>
@@ -193,6 +210,7 @@
     {% endfor %}
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endif %}
 

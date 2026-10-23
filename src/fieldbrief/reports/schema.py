@@ -181,6 +181,11 @@ class OverreachFlag(BaseModel):
     statement: str
 
 
+class ResearchSummary(BaseModel):
+    source_type_counts: dict[str, int] = Field(default_factory=dict)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class ReportMeta(BaseModel):
     target_company_id: UUID
     competitor_ids: list[UUID] = Field(default_factory=list)
@@ -191,6 +196,7 @@ class ReportMeta(BaseModel):
     synthesis_budget_cutoff: bool = False
     overreach_flags: list[OverreachFlag] = Field(default_factory=list)
     competitor_coverage: Literal["full", "partial", "none", "not_requested"] = "not_requested"
+    research_summary: ResearchSummary = Field(default_factory=ResearchSummary)
 
 
 class ExecutiveFinding(BaseModel):
