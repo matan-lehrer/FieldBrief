@@ -82,6 +82,7 @@ class Source(Base):
     published_at: Mapped[datetime | None]
     fetched_at: Mapped[datetime] = mapped_column(server_default=func.now())
     content_hash: Mapped[str]
+    content_fingerprint: Mapped[str | None]
 
 
 class Claim(Base):
