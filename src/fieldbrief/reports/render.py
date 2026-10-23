@@ -34,6 +34,8 @@ _SNAPSHOT_CITATION_FIELDS = (
 
 def collect_claim_ids(report_json: dict[str, Any]) -> set[str]:
     ids: set[str] = set()
+    for intro in report_json.get("company_introductions", []):
+        ids.update(intro["claim_ids"])
     for company in report_json.get("companies", []):
         for key in _SNAPSHOT_CITATION_FIELDS:
             citation = company.get(key)
@@ -123,6 +125,8 @@ def assign_source_numbers(
                 url_number[url] = len(url_number) + 1
             claim_number[cid] = url_number[url]
 
+    for intro in report_json.get("company_introductions", []):
+        visit(intro["claim_ids"])
     for finding in report_json.get("executive_brief", []):
         visit(finding["claim_ids"])
     for company in report_json.get("companies", []):

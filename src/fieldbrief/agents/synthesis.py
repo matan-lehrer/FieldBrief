@@ -109,6 +109,7 @@ async def run_synthesis(
     )
     claims = list(claims_result.scalars().all())
 
+    company_introductions: list[dict[str, Any]] = []
     strengths: list[dict[str, Any]] = []
     weaknesses: list[dict[str, Any]] = []
     opportunities: list[dict[str, Any]] = []
@@ -138,6 +139,20 @@ async def run_synthesis(
 
         def resolve_ids(indices: list[int]) -> list[str]:
             return [str(claims[i].id) for i in indices if 0 <= i < len(claims)]
+
+        for intro in result.company_introductions:
+            if not (0 <= intro.company_index < len(companies)):
+                continue
+            claim_ids = resolve_ids(intro.source_claim_indices)
+            if not claim_ids:
+                continue
+            company_introductions.append(
+                {
+                    "company_id": str(companies[intro.company_index].company_id),
+                    "intro": intro.intro,
+                    "claim_ids": claim_ids,
+                }
+            )
 
         for finding in result.executive_brief:
             claim_ids = resolve_ids(finding.source_claim_indices)
@@ -279,6 +294,10 @@ async def run_synthesis(
                 {
                     "statement": rec.statement,
                     "rationale": rec.rationale,
+                    "action": rec.action,
+                    "expected_benefit": rec.expected_benefit,
+                    "key_assumption": rec.key_assumption,
+                    "next_validation_step": rec.next_validation_step,
                     "priority": rec.priority,
                     "swot_refs": swot_refs,
                     "claim_ids": sorted(rec_claim_ids),
@@ -317,6 +336,7 @@ async def run_synthesis(
             "overreach_flags": overreach_flags,
         },
         "companies": [c.snapshot for c in companies],
+        "company_introductions": company_introductions,
         "executive_brief": executive_brief,
         "five_forces": {"forces": forces, "freshness": None},
         "bmc": {"blocks": bmc_blocks, "freshness": None},

@@ -236,6 +236,64 @@ def test_render_pdf_html_has_content_parity_with_the_web_report() -> None:
     assert "{{" not in html and "{%" not in html
 
 
+def test_company_introduction_renders_before_the_executive_brief() -> None:
+    """Readers should understand the business before seeing strategic
+    conclusions — the plain-English intro comes first."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["company_introductions"] = [
+        {
+            "company_id": target_id,
+            "intro": "Acme sells widgets to small businesses across the region.",
+            "claim_ids": [CID1],
+        }
+    ]
+    report["executive_brief"] = [
+        {"statement": "Revenue grew.", "why_it_matters": "Signals demand.", "claim_ids": [CID1]}
+    ]
+    claims = {
+        CID1: {
+            "statement": "Acme makes widgets.",
+            "source_url": "https://acme.com",
+            "source_type": "official",
+            "publisher": "acme.com",
+            "published_at": None,
+        }
+    }
+
+    html = render_report_html(report, claims, "Acme Corp")
+
+    intro_pos = html.index("Acme sells widgets to small businesses")
+    brief_pos = html.index('<section id="brief">')
+    assert intro_pos < brief_pos
+
+
+def test_recommendation_shows_its_own_reasoning_chain_or_says_why_there_is_none() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["recommendations"] = [
+        {
+            "statement": "Double down on the patented process.",
+            "rationale": "It's a sustained advantage.",
+            "action": "File two defensive continuation patents.",
+            "expected_benefit": "Extends the moat's effective lifespan.",
+            "key_assumption": "Competitors haven't already designed around it.",
+            "next_validation_step": "Run a freedom-to-operate search.",
+            "priority": "high",
+            "claim_ids": [CID1],
+        }
+    ]
+
+    html = render_report_html(report, {}, "Acme Corp")
+
+    assert "File two defensive continuation patents." in html
+    assert "Run a freedom-to-operate search." in html
+
+    report["recommendations"] = []
+    html_empty = render_report_html(report, {}, "Acme Corp")
+    assert "Insufficient evidence to recommend action" in html_empty
+
+
 def test_executive_brief_finding_with_an_overreach_flag_shows_a_caveat() -> None:
     """A finding resting only on interpretation/hypothesis claims must show
     a visible caveat, not sit at the same confidence as a well-evidenced one."""

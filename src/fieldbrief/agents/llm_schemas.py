@@ -92,6 +92,14 @@ class SWOTItemDraft(BaseModel):
 class RecommendationDraft(BaseModel):
     statement: str
     rationale: str
+    action: str = Field(description="The concrete action or investigation to actually take")
+    expected_benefit: str = Field(description="What doing this is meant to achieve")
+    key_assumption: str = Field(
+        description="The single biggest thing this recommendation assumes to be true"
+    )
+    next_validation_step: str = Field(
+        description="How to check the assumption/benefit before committing real resources"
+    )
     priority: Literal["high", "medium", "low"]
     source_claim_indices: list[int] = Field(min_length=1)
 
@@ -140,6 +148,18 @@ class PositioningDraft(BaseModel):
     companies: list[PositionedCompanyDraft] = Field(default_factory=list)
 
 
+class CompanyIntroductionDraft(BaseModel):
+    company_index: int = Field(description="Index into the numbered companies list in the prompt")
+    intro: str = Field(
+        description=(
+            "2-3 plain-English sentences: what this company sells, who buys it, and its "
+            "market — written so someone unfamiliar with the company understands the business "
+            "before reading any strategic conclusions about it. No jargon, no framework terms."
+        )
+    )
+    source_claim_indices: list[int] = Field(min_length=1)
+
+
 class ExecutiveFindingDraft(BaseModel):
     statement: str
     why_it_matters: str = Field(
@@ -156,6 +176,7 @@ class AudienceImplicationsDraft(BaseModel):
 
 
 class FrameworkSynthesisResult(BaseModel):
+    company_introductions: list[CompanyIntroductionDraft] = Field(default_factory=list)
     executive_brief: list[ExecutiveFindingDraft] = Field(default_factory=list)
     five_forces: list[ForceAssessmentDraft] = Field(default_factory=list)
     vrio: list[VRIOResourceDraft] = Field(default_factory=list)
