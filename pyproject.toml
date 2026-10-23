@@ -1,6 +1,6 @@
 [project]
 name = "fieldbrief"
-version = "0.10.0"
+version = "0.11.0"
 description = "AI-powered competitive analysis, built on real strategy frameworks."
 readme = "README.md"
 authors = [{ name = "Matan Lehrer" }]

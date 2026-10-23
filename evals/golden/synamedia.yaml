@@ -1,0 +1,40 @@
+# Golden company 11/10 (ADR 0021) — the actual Synamedia regression this
+# quality-pass round was built around. Facts below were verified by
+# directly fetching https://en.wikipedia.org/wiki/Synamedia on 2026-10-23
+# (SearXNG/Bing returned zero live results for every "Synamedia"-prefixed
+# query tested that day, itself a real, reproducible finding — see ADR
+# 0018/0021 — so this file is grounded via a direct fetch, not search).
+name: Synamedia
+public: false
+industry: Video technology for pay-TV/OTT operators (content delivery, video security, advertising)
+
+facts:
+  profile.hq_founded:
+    value: "Maidenhead, UK; business traces to 1988 (News Datacom, Israel); relaunched as Synamedia Oct 2018 after Permira acquired Cisco's Service Provider Video Software Solutions unit"
+    source_url: https://en.wikipedia.org/wiki/Synamedia
+  profile.employees:
+    value: "~1,000 (2026)"
+    source_url: https://en.wikipedia.org/wiki/Synamedia
+  events.recent:
+    value: "Completed the sale of its Video Network business to Lumine Group (completed July 2026); no strategic or financial rationale was publicly stated"
+    source_url: https://en.wikipedia.org/wiki/Synamedia
+
+competitors:
+  - Harmonic
+  - Verimatrix
+  - NAGRA (Kudelski Group)
+
+key_points:
+  swot:
+    - "The Video Network divestiture to Lumine Group should be treated as a business-line sale, not evidence of financial distress or a stated strategic pivot -- no rationale was disclosed"
+  recommendations:
+    - "Any recommendation touching financing should not conflate historical private funding raised with a market valuation or acquisition price -- Synamedia's 2018 Permira transaction was an acquisition of a Cisco business unit, not a funding round"
+
+# known_gaps are field-checklist keys (ADR 0021), matched against real
+# report gaps, not free prose. Nuance: revenue/funding/valuation have
+# never been publicly disclosed since the 2018 Permira transaction, and
+# current ownership structure post-2018 has no public update found.
+known_gaps:
+  - "financials.revenue"
+  - "financials.funding"
+  - "financials.market_cap_or_valuation"

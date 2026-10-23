@@ -10,6 +10,7 @@ LLM and real network, unlike anything under tests/.
 
 import argparse
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date
@@ -49,6 +50,11 @@ class CompanyEvalResult:
     gaps_total: int = 0
     gaps_not_found: int = 0
     invented_known_gaps: list[str] = field(default_factory=list)
+    key_points_total: int = 0
+    key_points_matched: int = 0
+    competitor_coverage: str = "not_requested"
+    recommendations_complete: bool = True
+    entity_scope_conflicts: int = 0
     error: str | None = None
 
     @property
@@ -70,10 +76,87 @@ def _report_findings(report_json: dict[str, Any]) -> list[dict[str, Any]]:
     return findings
 
 
-def score_report(
-    report_json: dict[str, Any], golden: GoldenCompany
-) -> tuple[int, int, int, int, list[str]]:
-    """Returns (findings_total, findings_cited, gaps_total, gaps_not_found, invented_known_gaps)."""
+_KEY_POINT_SECTION_TEXT: dict[str, Any] = {
+    "five_forces": lambda r: [f["rationale"] for f in r["five_forces"]["forces"]],
+    "vrio": lambda r: [v["rationale"] for v in r["vrio"]],
+    "swot": lambda r: [item["statement"] for items in r["swot"].values() for item in items],
+    "recommendations": lambda r: [
+        f"{rec['statement']} {rec['rationale']} {rec['action']}" for rec in r["recommendations"]
+    ],
+}
+
+_STOPWORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "its", "are", "was",
+    "has", "have", "into", "than", "also", "but", "not", "who", "what",
+}  # fmt: skip
+
+
+def _keywords(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 3 and w not in _STOPWORDS}
+
+
+def _key_point_matched(point: str, haystack_texts: list[str]) -> bool:
+    """Cheap, deterministic overlap check — no LLM judge (design.md's eval
+    philosophy): a key_point counts as matched if a meaningful share of its
+    significant keywords actually appear somewhere in the relevant report
+    section, not an exact-string or semantic match."""
+    point_kw = _keywords(point)
+    if not point_kw:
+        return False
+    haystack = " ".join(haystack_texts).lower()
+    hits = sum(1 for kw in point_kw if kw in haystack)
+    return hits >= max(1, len(point_kw) // 3)
+
+
+def _score_key_points(report_json: dict[str, Any], golden: GoldenCompany) -> tuple[int, int]:
+    total = 0
+    matched = 0
+    for category, points in golden.key_points.items():
+        texts = _KEY_POINT_SECTION_TEXT.get(category, lambda _r: [])(report_json)
+        for point in points:
+            total += 1
+            if _key_point_matched(point, texts):
+                matched += 1
+    return total, matched
+
+
+def _entity_scope_conflicts(report_json: dict[str, Any]) -> int:
+    """Real numeric disagreements (not scope mismatches, ADR 0015 already
+    separates those out) across every company's financial snapshot
+    fields — a nonzero count is worth a human look, not necessarily a bug
+    (sources genuinely do disagree sometimes), but should stay rare."""
+    conflicts = 0
+    for company in report_json["companies"]:
+        for field_name in ("revenue", "funding", "market_cap_or_valuation"):
+            citation = company.get(field_name)
+            if citation and citation["confidence"]["status"] == "conflicting":
+                conflicts += 1
+    return conflicts
+
+
+def _recommendations_complete(report_json: dict[str, Any]) -> bool:
+    return all(
+        rec.get("action") and rec.get("expected_benefit") and rec.get("key_assumption")
+        and rec.get("next_validation_step")
+        for rec in report_json["recommendations"]
+    )  # fmt: skip
+
+
+@dataclass
+class ScoreResult:
+    findings_total: int
+    findings_cited: int
+    gaps_total: int
+    gaps_not_found: int
+    invented_known_gaps: list[str]
+    key_points_total: int
+    key_points_matched: int
+    competitor_coverage: str
+    recommendations_complete: bool
+    entity_scope_conflicts: int
+
+
+def score_report(report_json: dict[str, Any], golden: GoldenCompany) -> ScoreResult:
     findings = _report_findings(report_json)
     findings_cited = sum(1 for f in findings if f.get("claim_ids"))
 
@@ -83,7 +166,20 @@ def score_report(
     gap_fields = {g["field"] for g in gaps}
     invented_known_gaps = [field for field in golden.known_gaps if field not in gap_fields]
 
-    return len(findings), findings_cited, len(gaps), gaps_not_found, invented_known_gaps
+    key_points_total, key_points_matched = _score_key_points(report_json, golden)
+
+    return ScoreResult(
+        findings_total=len(findings),
+        findings_cited=findings_cited,
+        gaps_total=len(gaps),
+        gaps_not_found=gaps_not_found,
+        invented_known_gaps=invented_known_gaps,
+        key_points_total=key_points_total,
+        key_points_matched=key_points_matched,
+        competitor_coverage=report_json["meta"].get("competitor_coverage", "not_requested"),
+        recommendations_complete=_recommendations_complete(report_json),
+        entity_scope_conflicts=_entity_scope_conflicts(report_json),
+    )
 
 
 async def run_one(slug: str, golden: GoldenCompany) -> CompanyEvalResult:
@@ -142,19 +238,22 @@ async def run_one(slug: str, golden: GoldenCompany) -> CompanyEvalResult:
         )
 
     latency_s = time.monotonic() - start
-    findings_total, findings_cited, gaps_total, gaps_not_found, invented = score_report(
-        report_json, golden
-    )
+    score = score_report(report_json, golden)
     return CompanyEvalResult(
         slug=slug,
         status="done",
         cost_usd=budget.spent_usd,
         latency_s=latency_s,
-        findings_total=findings_total,
-        findings_cited=findings_cited,
-        gaps_total=gaps_total,
-        gaps_not_found=gaps_not_found,
-        invented_known_gaps=invented,
+        findings_total=score.findings_total,
+        findings_cited=score.findings_cited,
+        gaps_total=score.gaps_total,
+        gaps_not_found=score.gaps_not_found,
+        invented_known_gaps=score.invented_known_gaps,
+        key_points_total=score.key_points_total,
+        key_points_matched=score.key_points_matched,
+        competitor_coverage=score.competitor_coverage,
+        recommendations_complete=score.recommendations_complete,
+        entity_scope_conflicts=score.entity_scope_conflicts,
     )
 
 
@@ -165,14 +264,18 @@ def write_results_table(results: list[CompanyEvalResult]) -> Path:
     lines = [
         f"# Eval results — {date.today().isoformat()}",
         "",
-        "| Company | Status | Cost ($) | Latency (s) | Citation validity | Gaps | Invented gaps |",
-        "|---|---|---|---|---|---|---|",
+        "| Company | Status | Cost ($) | Latency (s) | Citation validity | Gaps | "
+        "Invented gaps | Key points | Competitor coverage | Recs complete | Scope conflicts |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
+        key_points = f"{r.key_points_matched}/{r.key_points_total}" if r.key_points_total else "-"
         lines.append(
             f"| {r.slug} | {r.status} | {r.cost_usd:.4f} | {r.latency_s:.1f} | "
             f"{r.citation_validity:.0%} ({r.findings_cited}/{r.findings_total}) | "
-            f"{r.gaps_not_found}/{r.gaps_total} | {', '.join(r.invented_known_gaps) or '-'} |"
+            f"{r.gaps_not_found}/{r.gaps_total} | {', '.join(r.invented_known_gaps) or '-'} | "
+            f"{key_points} | {r.competitor_coverage} | "
+            f"{'yes' if r.recommendations_complete else 'no'} | {r.entity_scope_conflicts} |"
         )
 
     done = [r for r in results if r.status == "done"]
@@ -180,6 +283,8 @@ def write_results_table(results: list[CompanyEvalResult]) -> Path:
         avg_cost = sum(r.cost_usd for r in done) / len(done)
         avg_latency = sum(r.latency_s for r in done) / len(done)
         avg_citation = sum(r.citation_validity for r in done) / len(done)
+        key_points_total = sum(r.key_points_total for r in done)
+        key_points_matched = sum(r.key_points_matched for r in done)
         lines += [
             "",
             f"**Completion rate:** {len(done)}/{len(results)} "
@@ -187,6 +292,10 @@ def write_results_table(results: list[CompanyEvalResult]) -> Path:
             f"**Avg cost:** ${avg_cost:.4f} (target <=$0.50, standard tier)",
             f"**Avg latency:** {avg_latency:.1f}s (target <=300s p95, standard tier)",
             f"**Avg citation validity:** {avg_citation:.0%} (proxy for the >=90% accuracy NFR)",
+            f"**Key-point coverage:** {key_points_matched}/{key_points_total} "
+            f"({key_points_matched / key_points_total:.0%} if any)"
+            if key_points_total
+            else "**Key-point coverage:** n/a (no golden key_points matched this run)",
         ]
 
     out_path.write_text("\n".join(lines) + "\n")

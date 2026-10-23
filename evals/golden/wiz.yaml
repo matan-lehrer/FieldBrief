@@ -33,6 +33,8 @@ key_points:
   recommendations:
     - "Clarify go-to-market strategy now operating under Google Cloud post-acquisition"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: post-acquisition
+# financials are folded into Alphabet's Google Cloud segment, not broken
+# out independently.
 known_gaps:
-  - "Standalone post-acquisition financials (folded into Alphabet's Google Cloud segment, not broken out)"
-  - "Independent recent revenue figures"
+  - "financials.revenue"

@@ -44,6 +44,9 @@ key_points:
     - "Clarify product roadmap and independence under new Bending Spoons ownership"
     - "Re-establish differentiation against Notion and Monday.com, which have closed feature gaps"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: precise
+# acquisition terms beyond the headline $2.25B price aren't tracked as
+# their own field.
 known_gaps:
-  - "Exact current (post-acquisition) headcount and go-forward financials"
-  - "Precise acquisition terms beyond the headline $2.25B price"
+  - "profile.employees"
+  - "financials.revenue"

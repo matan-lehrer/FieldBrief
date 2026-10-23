@@ -40,6 +40,8 @@ key_points:
     - "Resolve the Greater China strategic review to stabilize international strategy"
     - "Prioritize a path to sustained profitability given persistent cash-flow challenges"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: precise terms of
+# the Greater China strategic review (still unresolved) aren't tracked as
+# their own field.
 known_gaps:
-  - "Exact current analyst consensus/share price"
-  - "Precise terms of the Greater China strategic review (still unresolved)"
+  - "financials.market_cap_or_valuation"

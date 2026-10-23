@@ -40,6 +40,9 @@ key_points:
     - "Continue investing in AI-driven site generation to differentiate"
     - "Address profitability given recent operating losses"
 
+# known_gaps are field-checklist keys (ADR 0021) so the harness can match
+# them against real report gaps, not free prose. Nuance: share count and
+# precise market cap disagree by >$1B across sources; segment-level
+# revenue breakdown isn't tracked as its own field.
 known_gaps:
-  - "Exact current share count / precise market cap (sources disagree by >$1B)"
-  - "Granular segment revenue breakdown"
+  - "financials.market_cap_or_valuation"

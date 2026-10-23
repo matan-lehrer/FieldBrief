@@ -40,6 +40,8 @@ key_points:
     - "Continue building logistics/fulfillment moat"
     - "Expand enterprise/B2B offerings to diversify beyond SMB merchants"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: market cap
+# figures disagree by >$50B across sources.
 known_gaps:
-  - "A specific, dated (last-12-months) news event — none found cleanly in this pass"
-  - "Precise current market cap (sources disagree by >$50B)"
+  - "events.recent"
+  - "financials.market_cap_or_valuation"
