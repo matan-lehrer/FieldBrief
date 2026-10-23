@@ -35,6 +35,7 @@
   .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.status-conflicting { background: #fcebea; color: #b3261e; }
   .badge.insufficient_evidence, .badge.status-different_scope { background: #e9e9ee; color: #6a6a74; }
   .scope-label { font-size: 9px; color: #878c99; }
+  .badge.overreach-caveat { background: #fbf1dd; color: #9a6b00; margin-left: 4px; }
   .ref { color: #4338ca; font-size: 9px; }
   .chart { position: relative; width: 240px; height: 240px; border: 1px solid #e4e4e8; border-radius: 6px;
     background: #fafafb; margin: 4px 0 2px; }
@@ -75,11 +76,14 @@
 <h1>{{ company_name }}</h1>
 <div class="meta">{{ report.meta.tier | capitalize }} report · data as of {{ report.meta.data_as_of }} · generated {{ report.meta.generated_at }}</div>
 
+{% set weak_brief_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "executive_brief") | map(attribute="statement") | list %}
+{% set weak_rec_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "recommendations") | map(attribute="statement") | list %}
+
 {% if report.executive_brief %}
 <h2>Executive brief</h2>
 {% for finding in report.executive_brief %}
   <div class="card">
-    <strong>{{ finding.statement }}</strong> {{ refs(finding.claim_ids) }}
+    <strong>{{ finding.statement }}</strong>{% if finding.statement in weak_brief_statements %}<span class="badge overreach-caveat">limited evidence</span>{% endif %} {{ refs(finding.claim_ids) }}
     <div class="ink-soft">{{ finding.why_it_matters }}</div>
   </div>
 {% endfor %}
@@ -189,7 +193,7 @@
 <h2>Recommendations</h2>
 {% for rec in report.recommendations %}
   <div class="card">
-    <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span>
+    <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span>{% if rec.statement in weak_rec_statements %}<span class="badge overreach-caveat">limited evidence</span>{% endif %}
     <strong>{{ rec.statement }}</strong> {{ refs(rec.claim_ids) }}
     <div class="ink-soft">{{ rec.rationale }}</div>
   </div>

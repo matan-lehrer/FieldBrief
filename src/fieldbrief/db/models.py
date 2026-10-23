@@ -16,6 +16,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 CompetitorOrigin = PgEnum("discovered", "user", name="competitor_origin")
 SourceType = PgEnum("filing", "official", "news", "blog", name="source_type")
+ClaimType = PgEnum(
+    "reported_fact",
+    "attributed_claim",
+    "analytical_interpretation",
+    "hypothesis",
+    name="claim_type",
+)
 ReportTier = PgEnum("quick", "standard", "deep", name="report_tier")
 ReportStatus = PgEnum("queued", "running", "done", "partial", "failed", name="report_status")
 ReportAudience = PgEnum(
@@ -88,6 +95,7 @@ class Claim(Base):
     value: Mapped[dict[str, Any]] = mapped_column(JSONB)
     snippet: Mapped[str]
     relevance: Mapped[float]
+    claim_type: Mapped[str | None] = mapped_column(ClaimType)
     verified: Mapped[bool] = mapped_column(default=False)
     extracted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

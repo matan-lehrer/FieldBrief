@@ -39,6 +39,7 @@
   .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.status-conflicting { background: var(--bad-soft); color: var(--bad); }
   .badge.insufficient_evidence, .badge.status-different_scope { background: var(--line-soft); color: var(--muted); }
   .scope-label { font-size: 11.5px; color: var(--muted); }
+  .badge.overreach-caveat { background: var(--warn-soft); color: var(--warn); margin-left: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
   th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
@@ -152,12 +153,15 @@
   </div>
 </div>
 
+{% set weak_brief_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "executive_brief") | map(attribute="statement") | list %}
+{% set weak_rec_statements = report.meta.overreach_flags | default([]) | selectattr("section", "equalto", "recommendations") | map(attribute="statement") | list %}
+
 {% if report.executive_brief %}
 <section id="brief">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"/><path d="M8 7h8"/><path d="M8 11h8"/></svg></span>Executive brief</h2>
 {% for finding in report.executive_brief %}
   <div class="card reveal">
-    <p><strong>{{ finding.statement }}</strong></p>
+    <p><strong>{{ finding.statement }}</strong>{% if finding.statement in weak_brief_statements %}<span class="badge overreach-caveat" title="This rests only on interpretation or speculation, not a reported fact or an attributed claim">limited evidence</span>{% endif %}</p>
     <p class="meta">{{ finding.why_it_matters }}</p>
     {{ sources_popover(finding.claim_ids) }}
   </div>
@@ -311,7 +315,7 @@
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Recommendations</h2>
 {% for rec in report.recommendations %}
   <div class="card reveal">
-    <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span></h3>
+    <h3>{{ rec.statement }} <span class="badge priority-{{ rec.priority }}">{{ rec.priority }}</span>{% if rec.statement in weak_rec_statements %}<span class="badge overreach-caveat" title="This rests only on interpretation or speculation, not a reported fact or an attributed claim">limited evidence</span>{% endif %}</h3>
     <p>{{ rec.rationale }}</p>
     {{ sources_popover(rec.claim_ids) }}
   </div>

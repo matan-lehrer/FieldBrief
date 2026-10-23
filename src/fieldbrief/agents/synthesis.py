@@ -14,6 +14,11 @@ from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway, Task
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
+# A finding/recommendation resting ONLY on these claim_types has no reported
+# fact or attributed claim behind it at all — flag it rather than present it
+# with the same weight as a well-evidenced one (ADR 0016).
+WEAK_CLAIM_TYPES = {"analytical_interpretation", "hypothesis"}
+
 COMPARISON_DIMENSIONS: list[tuple[str, str]] = [
     ("description", "What they do"),
     ("products", "Main products"),
@@ -35,6 +40,28 @@ class CompanyRef:
         self.name = name
         self.is_target = is_target
         self.snapshot = snapshot
+
+
+def _is_weakly_evidenced(claim_ids: list[str], claims_by_id: dict[str, Claim]) -> bool:
+    types = [claims_by_id[cid].claim_type for cid in claim_ids if cid in claims_by_id]
+    return bool(types) and all(t in WEAK_CLAIM_TYPES for t in types)
+
+
+def _overreach_flags(
+    *,
+    executive_brief: list[dict[str, Any]],
+    recommendations: list[dict[str, Any]],
+    claims: list[Claim],
+) -> list[dict[str, str]]:
+    claims_by_id = {str(c.id): c for c in claims}
+    flags: list[dict[str, str]] = []
+    for finding in executive_brief:
+        if _is_weakly_evidenced(finding["claim_ids"], claims_by_id):
+            flags.append({"section": "executive_brief", "statement": finding["statement"]})
+    for rec in recommendations:
+        if _is_weakly_evidenced(rec["claim_ids"], claims_by_id):
+            flags.append({"section": "recommendations", "statement": rec["statement"]})
+    return flags
 
 
 def _vrio_implication(valuable: bool, rare: bool, inimitable: bool, organized: bool) -> str:
@@ -258,6 +285,10 @@ async def run_synthesis(
                 }
             )
 
+    overreach_flags = _overreach_flags(
+        executive_brief=executive_brief, recommendations=recommendations, claims=claims
+    )
+
     bmc_groups: dict[str, list[Claim]] = defaultdict(list)
     for claim in claims:
         if claim.company_id != target.company_id:
@@ -283,6 +314,7 @@ async def run_synthesis(
             "generated_at": datetime.now(UTC).isoformat(),
             "data_as_of": date.today().isoformat(),
             "synthesis_budget_cutoff": synthesis_budget_cutoff,
+            "overreach_flags": overreach_flags,
         },
         "companies": [c.snapshot for c in companies],
         "executive_brief": executive_brief,

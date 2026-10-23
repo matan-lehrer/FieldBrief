@@ -136,21 +136,49 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "field": "profile.description",
                         "statement": "Makes widgets.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
-                    {"field": "profile.hq_founded", "statement": "Founded 2010.", "relevance": 0.9},
-                    {"field": "profile.employees", "statement": "~50 employees.", "relevance": 0.9},
-                    {"field": "offering.products", "statement": "Widgets.", "relevance": 0.9},
+                    {
+                        "field": "profile.hq_founded",
+                        "statement": "Founded 2010.",
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    },
+                    {
+                        "field": "profile.employees",
+                        "statement": "~50 employees.",
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    },
+                    {
+                        "field": "offering.products",
+                        "statement": "Widgets.",
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    },
                     {
                         "field": "customers.segments",
                         "statement": "Small businesses.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
-                    {"field": "revenue.model", "statement": "Subscriptions.", "relevance": 0.9},
-                    {"field": "financials.revenue", "statement": "$42M revenue.", "relevance": 0.9},
+                    {
+                        "field": "revenue.model",
+                        "statement": "Subscriptions.",
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    },
+                    {
+                        "field": "financials.revenue",
+                        "statement": "$42M revenue.",
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    },
                     {
                         "field": "offering.value_prop",
                         "statement": "Only widget maker with same-day delivery.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                         "bmc_block": "value_propositions",
                     },
                 ]
@@ -162,6 +190,7 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "field": "pricing.model",
                         "statement": "Tiered subscription pricing.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     }
                 ]
             )
@@ -172,11 +201,13 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "field": "financials.profitability",
                         "statement": "Profitable since 2022.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                     {
                         "field": "financials.funding",
                         "statement": "Raised $10M Series A.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                 ]
             )
@@ -188,12 +219,14 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "statement": "Patented same-day delivery network.",
                         "value": {"resource": "delivery network"},
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                     {
                         "field": "market.forces",
                         "statement": "Many substitute widget makers exist.",
                         "value": {"force": "substitutes"},
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                 ]
             )
@@ -204,6 +237,7 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "field": "environment.regulation",
                         "statement": "Subject to product safety rules.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     }
                 ]
             )
@@ -214,6 +248,7 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "field": "events.recent",
                         "statement": "Closed a new funding round this month.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     }
                 ]
             )
@@ -503,7 +538,14 @@ async def test_research_node_verifies_claims_from_anywhere_on_the_page() -> None
         messages = kwargs["messages"]
         if schema is ExtractionResult:
             result = ExtractionResult(
-                claims=[{"field": "profile.description", "statement": marker, "relevance": 0.9}]
+                claims=[
+                    {
+                        "field": "profile.description",
+                        "statement": marker,
+                        "relevance": 0.9,
+                        "claim_type": "reported_fact",
+                    }
+                ]
             )
             return _fake_llm_response(result.model_dump_json())
         if schema is ClaimVerification:
@@ -631,11 +673,13 @@ async def test_hq_founded_and_employees_reach_the_snapshot() -> None:
                         "statement": "Headquartered in New York, founded 2005.",
                         "value": {"hq": "New York, USA", "founded_year": 2005},
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                     {
                         "field": "profile.employees",
                         "statement": "About 200 employees.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     },
                 ]
             )
@@ -763,6 +807,7 @@ async def test_research_node_sources_financials_from_edgar_when_cik_present() ->
                         "field": "financials.revenue",
                         "statement": "Reported $500M revenue in the filing.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     }
                 ]
             )
@@ -956,6 +1001,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                             "field": "financials.funding",
                             "statement": "Raised $10M Series A.",
                             "relevance": 0.9,
+                            "claim_type": "reported_fact",
                         }
                     ]
                 )
@@ -966,6 +1012,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                             "field": "financials.funding",
                             "statement": "Reported $12M total funding.",
                             "relevance": 0.9,
+                            "claim_type": "reported_fact",
                         }
                     ]
                 )
@@ -1065,6 +1112,7 @@ async def test_research_node_extracts_for_a_second_company_sharing_an_unchanged_
                         "field": "profile.description",
                         "statement": "Shared page fact.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                     }
                 ]
             )
@@ -1210,12 +1258,14 @@ async def test_excerpt_is_stored_only_when_genuinely_verbatim() -> None:
                         "field": "profile.description",
                         "statement": "Page confirms the fact.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                         "excerpt": real_sentence,
                     },
                     {
                         "field": "offering.products",
                         "statement": "Another claim with a fabricated excerpt.",
                         "relevance": 0.9,
+                        "claim_type": "reported_fact",
                         "excerpt": "This exact sentence never appears anywhere on the page.",
                     },
                 ]

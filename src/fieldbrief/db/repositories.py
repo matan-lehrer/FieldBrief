@@ -126,6 +126,7 @@ async def add_claim(
     value: dict[str, Any],
     snippet: str,
     relevance: float,
+    claim_type: str | None = None,
     verified: bool = False,
 ) -> Claim:
     claim = Claim(
@@ -136,6 +137,7 @@ async def add_claim(
         value=value,
         snippet=snippet,
         relevance=relevance,
+        claim_type=claim_type,
         verified=verified,
     )
     session.add(claim)

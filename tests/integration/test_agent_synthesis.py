@@ -47,7 +47,9 @@ def test_vrio_implication_table_includes_unexploited_advantage() -> None:
     assert _vrio_implication(True, True, True, True) == "sustained_advantage"
 
 
-async def _one_claim_company(session: AsyncSession, *, field: str, value: dict) -> tuple:
+async def _one_claim_company(
+    session: AsyncSession, *, field: str, value: dict, claim_type: str | None = None
+) -> tuple:
     domain = f"https://synth-{uuid.uuid4().hex[:8]}.example.com/"
     company = await get_or_create_company(session, name="Synth Test Co", domain=domain)
     source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
@@ -61,6 +63,7 @@ async def _one_claim_company(session: AsyncSession, *, field: str, value: dict) 
         snippet="",
         relevance=0.9,
         verified=True,
+        claim_type=claim_type,
     )
     return company, claim
 
@@ -312,6 +315,94 @@ async def test_audience_implications_omitted_when_unsupported(session: AsyncSess
     assert report_json["audience_implications"] is None
     assert report_json["executive_brief"] == []
     assert report_json["meta"]["audience"] == "analyst"  # default when not specified
+
+
+@pytest.mark.asyncio
+async def test_finding_resting_only_on_a_hypothesis_claim_gets_an_overreach_flag(
+    session: AsyncSession,
+) -> None:
+    """A finding backed only by a hypothesis/analytical_interpretation claim,
+    with no reported_fact or attributed_claim behind it, must be flagged —
+    never presented with the same weight as a well-evidenced one."""
+    company, _claim = await _one_claim_company(
+        session,
+        field="strategy.moves",
+        value={},
+        claim_type="hypothesis",
+    )
+    result = FrameworkSynthesisResult(
+        executive_brief=[
+            {
+                "statement": "The company may be preparing for an acquisition.",
+                "why_it_matters": "Would reshape competitive dynamics.",
+                "source_claim_indices": [0],
+            }
+        ],
+    )
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert report_json["meta"]["overreach_flags"] == [
+        {
+            "section": "executive_brief",
+            "statement": "The company may be preparing for an acquisition.",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_finding_backed_by_a_reported_fact_is_not_flagged(session: AsyncSession) -> None:
+    company, _claim = await _one_claim_company(
+        session,
+        field="financials.revenue",
+        value={"amount_usd": 40_000_000},
+        claim_type="reported_fact",
+    )
+    result = FrameworkSynthesisResult(
+        executive_brief=[
+            {
+                "statement": "Revenue reached $40M.",
+                "why_it_matters": "A directly reported figure.",
+                "source_claim_indices": [0],
+            }
+        ],
+    )
+    with (
+        patch(
+            "fieldbrief.llm.gateway.litellm.acompletion",
+            new=AsyncMock(return_value=_fake_response(result.model_dump_json())),
+        ),
+        patch("fieldbrief.llm.gateway.litellm.completion_cost", return_value=0.001),
+    ):
+        report_json = await run_synthesis(
+            session=session,
+            gateway=LLMGateway(),
+            budget=Budget(limit_usd=5.0),
+            report_id=uuid.uuid4(),
+            tier="standard",
+            companies=[
+                CompanyRef(company_id=company.id, name=company.name, is_target=True, snapshot={})
+            ],
+            gaps=[],
+        )
+
+    assert report_json["meta"]["overreach_flags"] == []
 
 
 def test_comparison_table_includes_populated_dimensions_and_drops_empty_ones() -> None:
