@@ -28,6 +28,7 @@ from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.wikidata import get_company_details, pick_company_like, search_candidates
 from fieldbrief.llm.budget import Budget
 from fieldbrief.llm.gateway import LLMGateway
+from fieldbrief.reports.render import collect_claim_ids
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
 _NULL_PROGRESS = NullProgressSink()
@@ -302,8 +303,14 @@ async def run_report(
     )
 
     report_json["meta"]["competitor_coverage"] = competitor_coverage
+    # Every claim this report actually cites, not just claims extracted in
+    # this run's graph execution — a field satisfied by an already-fresh
+    # claim from an earlier run never re-enters research_node, so
+    # all_claim_ids alone would silently miss most of a cache-heavy report's
+    # real sources.
+    cited_claim_ids = list(collect_claim_ids(report_json))
     report_json["meta"]["research_summary"] = _research_summary(
-        source_type_counts=await _source_type_counts(session, all_claim_ids),
+        source_type_counts=await _source_type_counts(session, cited_claim_ids),
         target_gaps=[g for g in all_gaps if g["company_id"] == str(target_company.id)],
         competitor_coverage=competitor_coverage,
     )
