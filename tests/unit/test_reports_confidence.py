@@ -23,8 +23,14 @@ def _claim(
     return claim
 
 
-def _source(source_type: str) -> Source:
-    return Source(id=uuid.uuid4(), url="https://x.com", source_type=source_type, content_hash="h")
+def _source(source_type: str, content_fingerprint: str | None = None) -> Source:
+    return Source(
+        id=uuid.uuid4(),
+        url="https://x.com",
+        source_type=source_type,
+        content_hash="h",
+        content_fingerprint=content_fingerprint,
+    )
 
 
 def test_single_verified_official_source_scores_high() -> None:
@@ -199,6 +205,46 @@ def test_claims_for_the_same_entity_still_conflict_normally() -> None:
     citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
 
     assert citation.confidence.status == "conflicting"
+
+
+def test_syndicated_copies_sharing_a_fingerprint_dont_get_a_corroboration_bonus() -> None:
+    """Two different URLs serving the same underlying press release (same
+    content_fingerprint) are one independent fact, not two -- unlike two
+    genuinely different sources agreeing, which still gets the bonus."""
+    source1 = _source("news", content_fingerprint="shared-fp")
+    source2 = _source("news", content_fingerprint="shared-fp")
+    claim1 = _claim(source1.id, relevance=0.9, verified=True)
+    claim2 = _claim(source2.id, relevance=0.9, verified=True)
+
+    syndicated_citation = compute_citation(
+        [claim1, claim2], {source1.id: source1, source2.id: source2}
+    )
+
+    source3 = _source("news", content_fingerprint="fp-a")
+    source4 = _source("news", content_fingerprint="fp-b")
+    claim3 = _claim(source3.id, relevance=0.9, verified=True)
+    claim4 = _claim(source4.id, relevance=0.9, verified=True)
+
+    independent_citation = compute_citation(
+        [claim3, claim4], {source3.id: source3, source4.id: source4}
+    )
+
+    assert syndicated_citation.confidence.corroboration == 1
+    assert independent_citation.confidence.corroboration == 2
+    assert syndicated_citation.confidence.score < independent_citation.confidence.score
+
+
+def test_sources_with_no_fingerprint_fall_back_to_being_counted_by_source_id() -> None:
+    """Pre-migration sources (nullable column, never backfilled) must keep
+    behaving exactly as before: distinct source id = distinct evidence."""
+    source1 = _source("official", content_fingerprint=None)
+    source2 = _source("news", content_fingerprint=None)
+    claim1 = _claim(source1.id, relevance=0.8, verified=True)
+    claim2 = _claim(source2.id, relevance=0.8, verified=True)
+
+    citation = compute_citation([claim1, claim2], {source1.id: source1, source2.id: source2})
+
+    assert citation.confidence.corroboration == 2
 
 
 def test_scope_tags_only_block_comparison_when_they_actually_disagree() -> None:

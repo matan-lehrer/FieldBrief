@@ -87,6 +87,7 @@ async def get_or_create_source(
     title: str | None = None,
     source_type: str = "official",
     published_at: datetime | None = None,
+    content_fingerprint: str | None = None,
 ) -> tuple[Source, bool]:
     insert_stmt = (
         pg_insert(Source)
@@ -97,6 +98,7 @@ async def get_or_create_source(
             source_type=source_type,
             published_at=published_at,
             content_hash=content_hash,
+            content_fingerprint=content_fingerprint,
         )
         .on_conflict_do_nothing(index_elements=["url"])
         .returning(Source.id)
@@ -112,6 +114,7 @@ async def get_or_create_source(
     changed = source.content_hash != content_hash
     if changed:
         source.content_hash = content_hash
+        source.content_fingerprint = content_fingerprint
         source.fetched_at = _utcnow()
     await session.flush()
     return source, changed

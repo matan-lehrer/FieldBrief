@@ -17,7 +17,20 @@ search:
     - html
     - json
 
+# Bounded-tested 2026-10-23 (ADR 0018), not blind-enabled: Brave/DuckDuckGo/
+# Google CSE are rate-limited from this project's own dev-time query volume
+# (unresponsive_engines: "too many requests" / CAPTCHA). Of the remaining
+# free, no-key engines, startpage and mojeek ship `inactive: true` upstream
+# (both require solving a proof-of-work CAPTCHA SearXNG can't automate) and
+# marginalia returned zero results across several real test queries here —
+# none of the three are worth enabling. bing (still working) and wikipedia
+# (zero-cost, useful for entity background even when it has no comparison
+# content) are the two kept.
 engines:
   - name: bing
     engine: bing
     disabled: false
+  - name: wikipedia
+    engine: wikipedia
+    disabled: false
+    shortcut: wp

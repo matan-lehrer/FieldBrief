@@ -23,7 +23,7 @@ from fieldbrief.db.repositories import (
     get_fresh_claims,
     get_or_create_source,
 )
-from fieldbrief.fetch.clean import clean_html, content_hash, extract_metadata
+from fieldbrief.fetch.clean import clean_html, content_fingerprint, content_hash, extract_metadata
 from fieldbrief.fetch.edgar import get_recent_annual_filings
 from fieldbrief.fetch.http import Fetcher
 from fieldbrief.fetch.search import search
@@ -221,6 +221,7 @@ async def _research_financials_via_edgar(
             session,
             url=filing.document_url,
             content_hash=content_hash(cleaned),
+            content_fingerprint=content_fingerprint(cleaned),
             source_type="filing",
             title=title,
             published_at=_as_datetime(published_date),
@@ -329,6 +330,7 @@ async def research_node(
             session,
             url=url,
             content_hash=content_hash(cleaned),
+            content_fingerprint=content_fingerprint(cleaned),
             source_type=_source_type(url, company_domain),
             title=search_title or meta_title,
             published_at=_as_datetime(published_date),

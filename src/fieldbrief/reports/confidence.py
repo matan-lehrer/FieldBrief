@@ -89,6 +89,15 @@ def _evidence_status(
     return "strong" if corroboration > 1 else "supported"
 
 
+def _independence_key(claim: Claim, sources: dict[uuid.UUID, Source]) -> str:
+    """A press release syndicated across several domains is one independent
+    fact, not several — group by content fingerprint when known, falling
+    back to the source id for sources fetched before fingerprinting
+    existed (nullable column, never backfilled; append-only data)."""
+    source = sources[claim.source_id]
+    return source.content_fingerprint or f"source:{source.id}"
+
+
 def compute_citation(claims: list[Claim], sources: dict[uuid.UUID, Source]) -> Citation:
     if not claims:
         raise ValueError("compute_citation requires at least one claim")
@@ -101,7 +110,7 @@ def compute_citation(claims: list[Claim], sources: dict[uuid.UUID, Source]) -> C
         per_claim_scores.append(reliability * claim.relevance * verified_multiplier)
 
     base_score = max(per_claim_scores)
-    corroboration = len({claim.source_id for claim in claims})
+    corroboration = len({_independence_key(c, sources) for c in claims})
     conflicting, different_scope = _compare_claims(claims) if corroboration > 1 else (False, False)
     bonus = (
         0.0

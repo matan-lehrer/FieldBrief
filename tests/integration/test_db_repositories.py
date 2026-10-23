@@ -64,6 +64,22 @@ async def test_get_or_create_source_reports_content_change(session: AsyncSession
 
 
 @pytest.mark.asyncio
+async def test_get_or_create_source_stores_and_updates_content_fingerprint(
+    session: AsyncSession,
+) -> None:
+    url = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/about"
+    source, _ = await get_or_create_source(
+        session, url=url, content_hash="hash-a", content_fingerprint="fp-a"
+    )
+    assert source.content_fingerprint == "fp-a"
+
+    updated, _ = await get_or_create_source(
+        session, url=url, content_hash="hash-b", content_fingerprint="fp-b"
+    )
+    assert updated.content_fingerprint == "fp-b"
+
+
+@pytest.mark.asyncio
 async def test_add_claim_and_get_fresh_claims(session: AsyncSession) -> None:
     domain = f"https://wix-{uuid.uuid4().hex[:8]}.example.com/"
     company = await get_or_create_company(session, name="Wix.com", domain=domain)

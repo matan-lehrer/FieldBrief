@@ -1,5 +1,6 @@
 from fieldbrief.fetch.clean import (
     clean_html,
+    content_fingerprint,
     content_hash,
     extract_metadata,
     select_relevant_passages,
@@ -41,6 +42,18 @@ def test_content_hash_is_deterministic() -> None:
 
 def test_content_hash_differs_for_different_text() -> None:
     assert content_hash("hello") != content_hash("world")
+
+
+def test_content_fingerprint_matches_syndicated_copies_with_different_formatting() -> None:
+    """A press release republished on another domain with different
+    whitespace/boilerplate stripping is the same underlying fact."""
+    original = "Acme Corp raises $50M Series B led by Example Ventures."
+    syndicated = "  ACME CORP RAISES $50M SERIES B   led   by Example Ventures.  \n\n"
+    assert content_fingerprint(original) == content_fingerprint(syndicated)
+
+
+def test_content_fingerprint_differs_for_different_text() -> None:
+    assert content_fingerprint("Acme raises $50M") != content_fingerprint("Acme lays off staff")
 
 
 def test_select_relevant_passages_keeps_text_under_the_limit_unchanged() -> None:

@@ -18,6 +18,20 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+_FINGERPRINT_CHARS = 500
+
+
+def content_fingerprint(text: str) -> str:
+    """A cheap near-duplicate signature: lowercase, strip everything but
+    alphanumerics, hash the first `_FINGERPRINT_CHARS` normalized chars.
+    Catches a press release syndicated across several domains (same
+    underlying text, different wrapper/boilerplate) as one fact, not
+    several independent ones — unlike content_hash, which is exact-match
+    only and scoped to a single URL."""
+    normalized = "".join(ch for ch in text.lower() if ch.isalnum())
+    return hashlib.sha256(normalized[:_FINGERPRINT_CHARS].encode("utf-8")).hexdigest()
+
+
 def extract_metadata(html: str) -> tuple[str | None, date | None]:
     meta = trafilatura.extract_metadata(html)
     if meta is None:
