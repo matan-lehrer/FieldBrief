@@ -24,6 +24,20 @@ class ExtractedClaim(BaseModel):
     relevance: float = Field(
         ge=0, le=1, description="Is this page genuinely about the company, or a passing mention?"
     )
+    claim_type: Literal[
+        "reported_fact", "attributed_claim", "analytical_interpretation", "hypothesis"
+    ] = Field(
+        description=(
+            "reported_fact: the page states this directly as established (a filed number, a "
+            "stated date). attributed_claim: the page reports someone's claim/announcement "
+            "(a press release's own framing, a customer quote) without independently verifying "
+            "it. analytical_interpretation: this is the page's (or your) inference from other "
+            "facts, not a fact itself (e.g. 'this signals growing demand'). hypothesis: a "
+            "speculative/forward-looking statement (a rumor, an analyst guess, 'could indicate'). "
+            "Pick the weakest honest label — don't call a company's own press-release framing "
+            "a reported_fact just because it's stated plainly."
+        )
+    )
     excerpt: str | None = Field(
         default=None,
         description=(

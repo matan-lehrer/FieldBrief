@@ -166,6 +166,11 @@ class CoverageGap(BaseModel):
     reason: Literal["not_found", "budget_cutoff"] = "not_found"
 
 
+class OverreachFlag(BaseModel):
+    section: Literal["executive_brief", "recommendations"]
+    statement: str
+
+
 class ReportMeta(BaseModel):
     target_company_id: UUID
     competitor_ids: list[UUID] = Field(default_factory=list)
@@ -173,6 +178,8 @@ class ReportMeta(BaseModel):
     audience: Audience = DEFAULT_AUDIENCE
     generated_at: datetime
     data_as_of: date
+    synthesis_budget_cutoff: bool = False
+    overreach_flags: list[OverreachFlag] = Field(default_factory=list)
 
 
 class ExecutiveFinding(BaseModel):

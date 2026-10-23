@@ -161,6 +161,7 @@ async def _extract_and_store_claims(
             value=value,
             snippet=excerpt or "",
             relevance=extracted.relevance,
+            claim_type=extracted.claim_type,
         )
         verification = await gateway.call(
             Task.VERIFY,

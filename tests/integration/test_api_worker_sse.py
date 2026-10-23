@@ -52,7 +52,12 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
     if schema is ExtractionResult:
         result = ExtractionResult(
             claims=[
-                {"field": "profile.description", "statement": "Makes widgets.", "relevance": 0.9},
+                {
+                    "field": "profile.description",
+                    "statement": "Makes widgets.",
+                    "relevance": 0.9,
+                    "claim_type": "reported_fact",
+                },
             ]
         )
     elif schema is ClaimVerification:

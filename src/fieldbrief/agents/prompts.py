@@ -80,7 +80,12 @@ def extraction_prompt(company_name: str, page_text: str, fields: list[str]) -> l
         "valuation) are different facts — never fold one into the other, and if "
         "the page states a figure without saying which entity/period/currency it "
         "covers, extract it anyway but leave the matching value.* tag unset rather "
-        "than guessing."
+        "than guessing. "
+        "Also set claim_type honestly: a company's own announcement about itself "
+        "(a press release, a customer win, a funding round) is an attributed_claim, "
+        "not a reported_fact, even when the page states it plainly — reserve "
+        "reported_fact for things like a filed number or a dated fact the page "
+        "isn't merely relaying from the company's own promotion."
     )
     user = (
         f"Company: {company_name}\n\n"
@@ -132,6 +137,7 @@ def framework_synthesis_prompt(
     )
     numbered_claims = "\n".join(
         f"[{i}] ({name_by_id.get(c.company_id, '?')} / {c.field}"
+        f"{f' / {c.claim_type}' if c.claim_type else ''}"
         f"{f' / {c.value}' if c.value else ''}) {c.statement}"
         for i, c in enumerate(claims)
     )
@@ -163,6 +169,20 @@ def framework_synthesis_prompt(
         f"{audience_framing} — relevance (why these findings matter to this reader), "
         "explicit assumptions you're making, and open follow-up questions. Omit "
         "audience_implications entirely if the claims don't support it. "
+        "Each claim is tagged with a claim_type (reported_fact, attributed_claim, "
+        "analytical_interpretation, or hypothesis) — respect it: a customer "
+        "announcement or a press release is an attributed_claim, not proof of "
+        "product-market fit; a patent filing is not a proven, sustained moat; "
+        "market-level growth or size figures don't establish THIS company's margins "
+        "or its own attainable growth; a competitor-directory count or listing "
+        "doesn't by itself establish rivalry intensity — the underlying dynamics do; "
+        "a divestiture or restructuring doesn't by itself establish strategic intent "
+        "or financial distress — state only what the claims actually support, not "
+        "the most dramatic reading of them. When a finding or recommendation would "
+        "only be supported by analytical_interpretation or hypothesis claims, with no "
+        "reported_fact or attributed_claim behind it, say so in its own text (e.g. "
+        "'based on limited available evidence' or similar) rather than presenting it "
+        "with the same confidence as a well-evidenced one. "
         "Every item MUST cite at least one claim by its index — never invent an index, "
         "never cite a claim that doesn't support the point. If the claims don't support "
         "a force, a resource, a company's position, a SWOT item, a recommendation, an "

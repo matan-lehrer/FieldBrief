@@ -236,6 +236,37 @@ def test_render_pdf_html_has_content_parity_with_the_web_report() -> None:
     assert "{{" not in html and "{%" not in html
 
 
+def test_executive_brief_finding_with_an_overreach_flag_shows_a_caveat() -> None:
+    """A finding resting only on interpretation/hypothesis claims must show
+    a visible caveat, not sit at the same confidence as a well-evidenced one."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["meta"]["overreach_flags"] = [
+        {"section": "executive_brief", "statement": "Speculative finding."}
+    ]
+    report["executive_brief"] = [
+        {
+            "statement": "Speculative finding.",
+            "why_it_matters": "Worth watching.",
+            "claim_ids": [CID1],
+        }
+    ]
+    claims = {
+        CID1: {
+            "statement": "Analyst speculation.",
+            "source_url": "https://acme.com",
+            "source_type": "news",
+            "publisher": "acme.com",
+            "published_at": None,
+        }
+    }
+
+    html = render_report_html(report, claims, "Acme Corp")
+
+    assert "overreach-caveat" in html
+    assert "limited evidence" in html
+
+
 def test_render_pdf_html_handles_a_report_with_no_resolvable_claims() -> None:
     target_id = str(uuid.uuid4())
     report = _minimal_report(target_id)
