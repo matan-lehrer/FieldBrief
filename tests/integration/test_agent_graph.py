@@ -32,7 +32,12 @@ from fieldbrief.agents.nodes import (
     research_node,
     should_continue_researching,
 )
-from fieldbrief.agents.orchestrator import _competitor_coverage, _research_company, run_report
+from fieldbrief.agents.orchestrator import (
+    _competitor_coverage,
+    _research_company,
+    _research_summary,
+    run_report,
+)
 from fieldbrief.agents.progress import NullProgressSink
 from fieldbrief.db.models import (
     Claim,
@@ -446,6 +451,7 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
 
         assert len(report_json["companies"]) == 2
         assert report_json["meta"]["competitor_coverage"] == "full"
+        assert sum(report_json["meta"]["research_summary"]["source_type_counts"].values()) > 0
         created_company_ids.extend(uuid.UUID(cid) for cid in report_json["meta"]["competitor_ids"])
 
         assert report_json["five_forces"]["forces"][0]["force"] == "substitutes"
@@ -1467,6 +1473,36 @@ def test_competitor_coverage_distinguishes_none_partial_full_and_not_requested()
     assert _competitor_coverage(3, []) == "none"
     assert _competitor_coverage(3, [object(), object()]) == "partial"  # type: ignore[list-item]
     assert _competitor_coverage(2, [object(), object()]) == "full"  # type: ignore[list-item]
+
+
+def test_research_summary_states_actual_limitations_not_capabilities() -> None:
+    """Describe what research actually happened, not what the system is
+    capable of in principle."""
+    summary = _research_summary(
+        source_type_counts={"official": 2, "news": 1},
+        target_gaps=[
+            {"field": "financials.revenue", "attempts": 1, "reason": "not_found"},
+            {"field": "market.forces", "attempts": 1, "reason": "partial"},
+        ],
+        competitor_coverage="partial",
+    )
+
+    assert summary["source_type_counts"] == {"official": 2, "news": 1}
+    assert "1 field(s) could not be found" in summary["limitations"]
+    assert "1 field(s) have only partial evidence" in summary["limitations"]
+    assert (
+        "Fewer competitors were confirmed than this tier normally covers" in summary["limitations"]
+    )
+
+
+def test_research_summary_has_no_limitations_when_everything_is_resolved() -> None:
+    summary = _research_summary(
+        source_type_counts={"filing": 1},
+        target_gaps=[],
+        competitor_coverage="full",
+    )
+
+    assert summary["limitations"] == []
 
 
 def test_should_continue_researching_stops_at_the_time_deadline() -> None:

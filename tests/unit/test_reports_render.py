@@ -325,6 +325,41 @@ def test_executive_brief_finding_with_an_overreach_flag_shows_a_caveat() -> None
     assert "limited evidence" in html
 
 
+def test_research_summary_section_shows_sources_and_limitations() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["meta"]["research_summary"] = {
+        "source_type_counts": {"official": 2, "news": 1},
+        "limitations": ["1 field(s) could not be found"],
+    }
+
+    html = render_report_html(report, {}, "Acme Corp")
+
+    assert "2 official" in html
+    assert "1 news" in html
+    assert "1 field(s) could not be found" in html
+
+
+def test_evidence_badge_has_a_plain_english_tooltip_not_a_certainty_claim() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["companies"][0]["revenue"] = _citation(CID1)
+    claims = {
+        CID1: {
+            "statement": "Revenue was $10M.",
+            "source_url": "https://acme.com",
+            "source_type": "official",
+            "publisher": "acme.com",
+            "published_at": None,
+        }
+    }
+
+    html = render_report_html(report, claims, "Acme Corp")
+
+    assert "Backed by a verified source, not yet independently corroborated" in html
+    assert "99%" not in html and "100% confidence" not in html
+
+
 def test_gap_label_is_human_readable_not_a_raw_field_key() -> None:
     target_id = str(uuid.uuid4())
     report = _minimal_report(target_id)
@@ -355,6 +390,29 @@ def test_no_competitors_found_shows_an_incomplete_coverage_banner_not_a_fake_com
 
     assert "Competitor research incomplete" in html
     assert '<section id="comparison">' not in html
+
+
+def test_render_pdf_html_vrio_table_repeats_its_header_across_page_breaks() -> None:
+    """A long VRIO/comparison table must not lose its header when it spans
+    a page break in print -- <thead> plus break-inside: avoid on rows."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["vrio"] = [
+        {
+            "resource": "Delivery network",
+            "valuable": True,
+            "rare": True,
+            "inimitable": True,
+            "organized": True,
+            "competitive_implication": "sustained_advantage",
+            "rationale": "Hard to replicate.",
+            "claim_ids": [],
+        }
+    ]
+
+    html = render_pdf_html(report, {}, "Acme Corp")
+
+    assert "<thead><tr><th>Resource</th>" in html
 
 
 def test_render_pdf_html_handles_a_report_with_no_resolvable_claims() -> None:

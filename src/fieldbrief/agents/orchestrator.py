@@ -15,7 +15,7 @@ from fieldbrief.agents.progress import NullProgressSink, ProgressSink, Stage
 from fieldbrief.agents.state import GraphState
 from fieldbrief.agents.synthesis import CompanyRef, run_synthesis
 from fieldbrief.consts import WIKIDATA_CANDIDATE_LIMIT
-from fieldbrief.db.models import Claim, Company
+from fieldbrief.db.models import Claim, Company, Source
 from fieldbrief.db.repositories import (
     add_report_competitors,
     get_or_create_company,
@@ -31,6 +31,53 @@ from fieldbrief.llm.gateway import LLMGateway
 from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 
 _NULL_PROGRESS = NullProgressSink()
+
+
+async def _source_type_counts(session: AsyncSession, claim_ids: list[str]) -> dict[str, int]:
+    if not claim_ids:
+        return {}
+    rows = await session.execute(
+        select(Source.source_type, Source.id)
+        .join(Claim, Claim.source_id == Source.id)
+        .where(Claim.id.in_([uuid.UUID(cid) for cid in claim_ids]))
+    )
+    seen_source_ids: set[uuid.UUID] = set()
+    counts: dict[str, int] = {}
+    for source_type, source_id in rows.all():
+        if source_id in seen_source_ids:
+            continue
+        seen_source_ids.add(source_id)
+        counts[source_type] = counts.get(source_type, 0) + 1
+    return counts
+
+
+def _research_summary(
+    *,
+    source_type_counts: dict[str, int],
+    target_gaps: list[dict[str, Any]],
+    competitor_coverage: str,
+) -> dict[str, Any]:
+    """A deterministic, no-LLM-call account of what research actually
+    happened, not what the system is capable of in principle — source
+    mix, and a plain-English limitations list built from real gap reasons
+    and the real competitor-coverage outcome."""
+    reason_counts: dict[str, int] = {}
+    for gap in target_gaps:
+        reason_counts[gap["reason"]] = reason_counts.get(gap["reason"], 0) + 1
+
+    limitations: list[str] = []
+    if reason_counts.get("not_found"):
+        limitations.append(f"{reason_counts['not_found']} field(s) could not be found")
+    if reason_counts.get("partial"):
+        limitations.append(f"{reason_counts['partial']} field(s) have only partial evidence")
+    if reason_counts.get("budget_cutoff"):
+        limitations.append("Research stopped early due to this report's cost/time budget")
+    if competitor_coverage == "none":
+        limitations.append("No competitors could be confirmed")
+    elif competitor_coverage == "partial":
+        limitations.append("Fewer competitors were confirmed than this tier normally covers")
+
+    return {"source_type_counts": source_type_counts, "limitations": limitations}
 
 
 def _competitor_coverage(competitor_count: int, competitors: list[Company]) -> str:
@@ -255,6 +302,11 @@ async def run_report(
     )
 
     report_json["meta"]["competitor_coverage"] = competitor_coverage
+    report_json["meta"]["research_summary"] = _research_summary(
+        source_type_counts=await _source_type_counts(session, all_claim_ids),
+        target_gaps=[g for g in all_gaps if g["company_id"] == str(target_company.id)],
+        competitor_coverage=competitor_coverage,
+    )
 
     has_budget_cutoff = any(g["reason"] == "budget_cutoff" for g in all_gaps)
     synthesis_budget_cutoff = report_json["meta"]["synthesis_budget_cutoff"]
