@@ -98,6 +98,20 @@ def _field_resolved(fresh_claims: list[Claim], field: str) -> bool:
     return len(_distinct_tags(verified_fresh, tag_key)) >= MIN_DISTINCT_TAGS[field]
 
 
+def _gap_reason(fresh_claims: list[Claim], field: str) -> str:
+    """A tagged multi-dimension field (market.forces, resources.advantages)
+    with SOME verified evidence but not enough breadth isn't the same
+    honest answer as finding nothing at all — a report that shows a real
+    "rivalry: high" assessment while also listing the underlying field as
+    a flat, unqualified "not found" gap is misleading (not contradictory
+    in substance, but reads that way)."""
+    tag_key = TAGGED_FIELD_KEY.get(field)
+    if tag_key is None:
+        return "not_found"
+    verified_fresh = [c for c in fresh_claims if c.verified]
+    return "partial" if _distinct_tags(verified_fresh, tag_key) else "not_found"
+
+
 def _source_type(url: str, company_domain: str | None) -> str:
     netloc = urlparse(url).netloc.lower().removeprefix("www.")
     if company_domain:
@@ -357,7 +371,13 @@ async def gap_check_node(state: GraphState, *, session: AsyncSession, tier: Tier
             continue
         attempts = gap["attempts"] + 1
         if attempts >= max_attempts:
-            exhausted.append({"field": gap["field"], "attempts": attempts})
+            exhausted.append(
+                {
+                    "field": gap["field"],
+                    "attempts": attempts,
+                    "reason": _gap_reason(fresh, gap["field"]),
+                }
+            )
             continue
         remaining.append({"field": gap["field"], "attempts": attempts})
     return {

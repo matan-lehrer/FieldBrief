@@ -32,7 +32,7 @@ from fieldbrief.agents.nodes import (
     research_node,
     should_continue_researching,
 )
-from fieldbrief.agents.orchestrator import _research_company, run_report
+from fieldbrief.agents.orchestrator import _competitor_coverage, _research_company, run_report
 from fieldbrief.agents.progress import NullProgressSink
 from fieldbrief.db.models import (
     Claim,
@@ -437,6 +437,7 @@ async def test_full_report_with_competitor_covers_frameworks_and_swot_rollup() -
             await fetcher.aclose()
 
         assert len(report_json["companies"]) == 2
+        assert report_json["meta"]["competitor_coverage"] == "full"
         created_company_ids.extend(uuid.UUID(cid) for cid in report_json["meta"]["competitor_ids"])
 
         assert report_json["five_forces"]["forces"][0]["force"] == "substitutes"
@@ -1451,6 +1452,15 @@ async def test_research_company_degrades_to_partial_snapshot_on_budget_exhaustio
             await _cleanup_company(created_company_id, created_report_id)
 
 
+def test_competitor_coverage_distinguishes_none_partial_full_and_not_requested() -> None:
+    """A single-company table must never be presented as a competitive
+    comparison — the report needs to know which of these actually happened."""
+    assert _competitor_coverage(0, []) == "not_requested"
+    assert _competitor_coverage(3, []) == "none"
+    assert _competitor_coverage(3, [object(), object()]) == "partial"  # type: ignore[list-item]
+    assert _competitor_coverage(2, [object(), object()]) == "full"  # type: ignore[list-item]
+
+
 def test_should_continue_researching_stops_at_the_time_deadline() -> None:
     """report_time_budget_seconds used to be defined and never read — no
     wall-clock enforcement existed at all. A past deadline must stop the
@@ -1481,7 +1491,49 @@ async def test_gap_check_node_stops_retrying_a_field_past_its_attempt_cap() -> N
             result = await gap_check_node(state, session=session, tier="quick")
 
             assert result["gaps"] == []
-            assert result["exhausted_gaps"] == [{"field": "profile.description", "attempts": 1}]
+            assert result["exhausted_gaps"] == [
+                {"field": "profile.description", "attempts": 1, "reason": "not_found"}
+            ]
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_gap_check_node_marks_partial_evidence_distinctly_from_not_found() -> None:
+    """market.forces with one real tagged claim (e.g. a genuine "rivalry:
+    high" assessment downstream) exhausting its retries must say "partial",
+    not a flat "not found" that reads as contradicting the Five Forces
+    section sitting right next to it in the report."""
+    try:
+        async with SessionFactory() as session:
+            domain = f"https://partial-gap-{uuid4().hex[:8]}.example.com/"
+            company = await get_or_create_company(session, name="Partial Gap Co", domain=domain)
+            source, _ = await get_or_create_source(session, url=domain, content_hash="h1")
+            claim = await add_claim(
+                session,
+                company_id=company.id,
+                source_id=source.id,
+                field="market.forces",
+                statement="High rivalry observed.",
+                value={"force": "rivalry"},
+                snippet="",
+                relevance=0.9,
+            )
+            claim.verified = True
+            await session.flush()
+
+            state = {
+                "company_id": str(company.id),
+                "gaps": [{"field": "market.forces", "attempts": 0}],
+                "exhausted_gaps": [],
+                "retry_round": 1,
+            }
+            result = await gap_check_node(state, session=session, tier="quick")
+
+            assert result["exhausted_gaps"] == [
+                {"field": "market.forces", "attempts": 1, "reason": "partial"}
+            ]
             await session.rollback()
     finally:
         await engine.dispose()

@@ -160,7 +160,17 @@
 <div class="meta">{{ report.positioning.x_axis.name }} (x) vs. {{ report.positioning.y_axis.name }} (y)</div>
 {% endif %}
 
-{% if report.comparison.rows %}
+{% if report.meta.competitor_coverage == "none" %}
+<div class="card">
+  <strong>Competitor research incomplete.</strong> No competitors could be confirmed for this report — treat this as a company briefing, not a competitive comparison.
+</div>
+{% elif report.meta.competitor_coverage == "partial" %}
+<div class="card">
+  <strong>Competitor coverage is partial.</strong> Fewer competitors were confirmed than this report tier normally covers.
+</div>
+{% endif %}
+
+{% if report.comparison.rows and report.companies | length > 1 %}
 <h2>Comparison</h2>
 <table>
   <tr><th>Dimension</th>{% for c in report.companies %}<th>{{ c.name }}</th>{% endfor %}</tr>
@@ -218,7 +228,7 @@
 {% if report.gaps %}
 <h2>Not found</h2>
 <p class="gaps">
-  {% for g in report.gaps %}{{ g.field }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}{% endfor %}
+  {% for g in report.gaps %}{{ field_label(g.field) }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}{% endfor %}
 </p>
 {% endif %}
 

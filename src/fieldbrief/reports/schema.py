@@ -163,7 +163,7 @@ class CoverageGap(BaseModel):
     company_id: UUID
     field: str
     attempts: int
-    reason: Literal["not_found", "budget_cutoff"] = "not_found"
+    reason: Literal["not_found", "partial", "budget_cutoff"] = "not_found"
 
 
 class OverreachFlag(BaseModel):
@@ -180,6 +180,7 @@ class ReportMeta(BaseModel):
     data_as_of: date
     synthesis_budget_cutoff: bool = False
     overreach_flags: list[OverreachFlag] = Field(default_factory=list)
+    competitor_coverage: Literal["full", "partial", "none", "not_requested"] = "not_requested"
 
 
 class ExecutiveFinding(BaseModel):

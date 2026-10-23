@@ -38,6 +38,35 @@ FIELD_CHECKLIST: list[FieldSpec] = [
     FieldSpec("risks.disclosed", "deep", True),
 ]
 
+FIELD_LABELS: dict[str, str] = {
+    "profile.description": "Company description",
+    "profile.hq_founded": "Headquarters & founding year",
+    "profile.employees": "Employee count",
+    "offering.products": "Products / services",
+    "customers.segments": "Customer segments",
+    "revenue.model": "Revenue model",
+    "financials.revenue": "Revenue",
+    "events.recent": "Recent news",
+    "pricing.model": "Pricing",
+    "offering.value_prop": "Differentiation / value proposition",
+    "channels.go_to_market": "Go-to-market motion",
+    "financials.profitability": "Profitability",
+    "financials.funding": "Funding raised",
+    "financials.market_cap_or_valuation": "Market cap / valuation",
+    "resources.advantages": "Competitive advantages",
+    "market.forces": "Five Forces coverage",
+    "environment.regulation": "Regulatory environment",
+    "market.size_growth": "Market size & growth",
+    "partners.key": "Key partners",
+    "strategy.moves": "Strategic moves (M&A, launches)",
+    "risks.disclosed": "Disclosed risk factors",
+}
+
+
+def field_label(field: str) -> str:
+    return FIELD_LABELS.get(field, field)
+
+
 TIER_COMPETITOR_COUNT: dict[Tier, int] = {"quick": 2, "standard": 4, "deep": 6}
 
 MAX_RETRY_ROUNDS: dict[Tier, int] = {"quick": 1, "standard": 4, "deep": 6}
