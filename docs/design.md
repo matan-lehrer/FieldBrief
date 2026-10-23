@@ -81,11 +81,11 @@ A cached research set satisfies any request at or below its tier; higher tiers r
 - **Source reliability**: from `source_type` (filing/official = 1.0, news = 0.8, blog = 0.5).
 - **Relevance**: is the source *about* this company, or a passing mention — `claims.relevance`, set at extraction.
 - **Verified**: does the snippet actually support the claim — ×1.0 if verified, ×0.5 if not (unverified isn't discarded, just discounted; "unknown is acceptable" doesn't mean "unverified is worthless").
-- **Corroboration**: number of independent sources (distinct `source_id`) agreeing on the same field — each one beyond the first adds +0.05, capped so the total never exceeds 1.0. Claims that carry a comparable numeric `value` for the same field but disagree by more than ~15% are flagged **conflicting** instead — distinct sources agreeing by coincidence that *something* was reported isn't the same as agreeing on the value, and a conflict gets no corroboration bonus.
+- **Corroboration**: number of independent sources (distinct `source_id`) agreeing on the same field — each one beyond the first adds +0.05, capped so the total never exceeds 1.0. Two claims are only compared at all if their `value`'s `entity_name`/`currency`/`period`/`scope` tags (ADR 0015) agree wherever both are known. Claims that pass that scope check but carry a comparable numeric `value` that disagrees by more than ~15% are flagged **conflicting**; claims whose scope tags actively disagree (a subsidiary's figure vs. its parent's, a different currency, a different period) are flagged **different_scope** instead — they aren't a conflict, they're two different facts that happen to share a field name. Either way, no corroboration bonus.
 
-Concretely: `score = min(1.0, max(reliability·relevance·verified_mult over claims) + 0.05·(corroboration - 1))`, zeroed out on conflict. Implementation: `reports/confidence.py`.
+Concretely: `score = min(1.0, max(reliability·relevance·verified_mult over claims) + 0.05·(corroboration - 1))`, zeroed out on conflict or scope mismatch. Implementation: `reports/confidence.py`.
 
-A `Confidence` also carries a discrete, reader-facing **status** (`strong | supported | unverified | conflicting`), derived from the same inputs — meant for display instead of the raw score, which reads like a probability of being true rather than something a reader can act on.
+A `Confidence` also carries a discrete, reader-facing **status** (`strong | supported | unverified | conflicting | different_scope`), derived from the same inputs — meant for display instead of the raw score, which reads like a probability of being true rather than something a reader can act on.
 
 ---
 
@@ -226,7 +226,8 @@ class CompanySnapshot(BaseModel):
     revenue_model: Citation | None
     revenue: Citation | None
     profitability: Citation | None
-    funding_or_cap: Citation | None
+    funding: Citation | None  # private funding raised — ADR 0015 split from funding_or_cap
+    market_cap_or_valuation: Citation | None  # market cap (public) or valuation (private)
     recent_events: Citation | None
     freshness: Freshness
 

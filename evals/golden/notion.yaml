@@ -12,8 +12,11 @@ facts:
     value: "~$500-600M (2025 estimate)"
     source_url: https://getlatka.com/companies/notion
     tolerance: "estimate, not an audited disclosure — wide range"
-  financials.funding_or_cap:
-    value: "Total funding ~$343M; last primary round Series C Oct 2021 at $10B; secondary sales valued ~$9.2-11B (2025-2026)"
+  financials.funding:
+    value: "Total funding ~$343M; last primary round Series C Oct 2021"
+    source_url: https://getlatka.com/companies/notion
+  financials.market_cap_or_valuation:
+    value: "Series C (Oct 2021) valued at $10B; secondary sales valued ~$9.2-11B (2025-2026, private)"
     source_url: https://getlatka.com/companies/notion
     tolerance: "wide — secondary-market valuations, not a primary round"
 

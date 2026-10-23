@@ -39,7 +39,10 @@ FRESHNESS_MAX_AGE: dict[str, timedelta] = {
 SEARCH_GROUPS: list[tuple[set[str], str]] = [
     ({"events.recent"}, "{name} news"),
     ({"pricing.model"}, "{name} pricing"),
-    ({"financials.profitability", "financials.funding_or_cap"}, "{name} funding financials"),
+    (
+        {"financials.profitability", "financials.funding", "financials.market_cap_or_valuation"},
+        "{name} funding financials",
+    ),
     ({"resources.advantages"}, "{name} competitive advantage moat"),
     ({"market.forces"}, "{name} industry competition analysis"),
     ({"environment.regulation"}, "{name} regulation compliance"),
@@ -49,7 +52,7 @@ RESULTS_PER_SEARCH = 6
 EDGAR_FIELDS: set[str] = {
     "financials.revenue",
     "financials.profitability",
-    "financials.funding_or_cap",
+    "financials.market_cap_or_valuation",
 }
 
 CORROBORATE_FIELDS: set[str] = EDGAR_FIELDS | {"market.forces"}
@@ -432,7 +435,8 @@ async def analyze_node(state: GraphState, *, session: AsyncSession) -> dict[str,
         "revenue_model": citation_for("revenue.model"),
         "revenue": citation_for("financials.revenue"),
         "profitability": citation_for("financials.profitability"),
-        "funding_or_cap": citation_for("financials.funding_or_cap"),
+        "funding": citation_for("financials.funding"),
+        "market_cap_or_valuation": citation_for("financials.market_cap_or_valuation"),
         "recent_events": citation_for("events.recent"),
         "freshness": {"as_of": date.today().isoformat(), "stale": stale},
     }

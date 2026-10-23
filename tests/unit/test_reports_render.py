@@ -30,7 +30,8 @@ def _minimal_report(target_id: str) -> dict:
                 "revenue_model": None,
                 "revenue": None,
                 "profitability": None,
-                "funding_or_cap": None,
+                "funding": None,
+                "market_cap_or_valuation": None,
                 "recent_events": None,
                 "employees": None,
             }
@@ -140,6 +141,62 @@ def test_sources_popover_never_shows_the_statement_as_a_quote() -> None:
     assert "&ldquo;" not in html and "&rdquo;" not in html
     assert "Acme Newsroom" in html
     assert "2026-01-15" in html
+
+
+def test_company_snapshot_shows_the_entity_scope_next_to_a_financial_figure() -> None:
+    """A revenue/funding/valuation figure must say what it's actually about —
+    the Synamedia regression: a subsidiary's revenue was silently compared
+    against the parent's headcount with no indication they were different
+    scopes. The scope label makes that visible on the page."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["companies"][0]["revenue"] = _citation(CID1)
+    claims = {
+        CID1: {
+            "statement": "Revenue was £0.5M.",
+            "source_url": "https://find-and-update.company-information.service.gov.uk/x",
+            "source_type": "filing",
+            "publisher": "Companies House",
+            "published_at": None,
+            "scope_label": "Synamedia Holdings Limited · standalone · FY2023 · GBP",
+        }
+    }
+
+    html = render_report_html(report, claims, "Synamedia")
+
+    assert "Synamedia Holdings Limited · standalone · FY2023 · GBP" in html
+
+
+def test_different_scope_confidence_status_renders_distinctly_from_conflicting() -> None:
+    """Two figures for incompatible entities/periods aren't a 'conflict' —
+    they're different facts that happen to share a field name, so they get
+    their own status rather than being lumped in with real disagreements."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["companies"][0]["revenue"] = {
+        "claim_ids": [CID1],
+        "confidence": {
+            "score": 0.5,
+            "corroboration": 2,
+            "verified": True,
+            "status": "different_scope",
+        },
+    }
+    claims = {
+        CID1: {
+            "statement": "Revenue was £0.5M (standalone).",
+            "source_url": "https://find-and-update.company-information.service.gov.uk/x",
+            "source_type": "filing",
+            "publisher": "Companies House",
+            "published_at": None,
+            "scope_label": None,
+        }
+    }
+
+    html = render_report_html(report, claims, "Synamedia")
+
+    assert "status-different_scope" in html
+    assert "different scope" in html
 
 
 def test_render_report_html_shows_not_found_for_missing_citation() -> None:

@@ -174,7 +174,7 @@ def _route_llm_call(*args: object, **kwargs: object) -> SimpleNamespace:
                         "relevance": 0.9,
                     },
                     {
-                        "field": "financials.funding_or_cap",
+                        "field": "financials.funding",
                         "statement": "Raised $10M Series A.",
                         "relevance": 0.9,
                     },
@@ -953,7 +953,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                 result = ExtractionResult(
                     claims=[
                         {
-                            "field": "financials.funding_or_cap",
+                            "field": "financials.funding",
                             "statement": "Raised $10M Series A.",
                             "relevance": 0.9,
                         }
@@ -963,7 +963,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                 result = ExtractionResult(
                     claims=[
                         {
-                            "field": "financials.funding_or_cap",
+                            "field": "financials.funding",
                             "statement": "Reported $12M total funding.",
                             "relevance": 0.9,
                         }
@@ -1019,7 +1019,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                     {
                         **base_state,
                         "retry_round": 0,
-                        "gaps": [{"field": "financials.funding_or_cap", "attempts": 0}],
+                        "gaps": [{"field": "financials.funding", "attempts": 0}],
                     },
                     session=session,
                     gateway=gateway,
@@ -1037,7 +1037,7 @@ async def test_research_node_fetches_two_sources_for_corroboration_fields() -> N
                 {**base_state, "retry_round": 1, "gaps": [], "claim_ids": result["claim_ids"]},
                 session=session,
             )
-            citation = analyze_result["company_snapshot"]["funding_or_cap"]
+            citation = analyze_result["company_snapshot"]["funding"]
             assert citation["confidence"]["corroboration"] == 2
             await session.commit()
     finally:

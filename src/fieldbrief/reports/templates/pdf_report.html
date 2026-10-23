@@ -33,7 +33,8 @@
   .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low, .badge.status-strong, .badge.status-supported { background: #e9f6ee; color: #157a45; }
   .badge.medium, .badge.parity, .badge.priority-medium, .badge.unexploited_advantage, .badge.status-unverified { background: #fbf1dd; color: #9a6b00; }
   .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.status-conflicting { background: #fcebea; color: #b3261e; }
-  .badge.insufficient_evidence { background: #e9e9ee; color: #6a6a74; }
+  .badge.insufficient_evidence, .badge.status-different_scope { background: #e9e9ee; color: #6a6a74; }
+  .scope-label { font-size: 9px; color: #878c99; }
   .ref { color: #4338ca; font-size: 9px; }
   .chart { position: relative; width: 240px; height: 240px; border: 1px solid #e4e4e8; border-radius: 6px;
     background: #fafafb; margin: 4px 0 2px; }
@@ -63,6 +64,7 @@
   {% if c %}
     {% set primary = claims.get(c.claim_ids[0]) if c.claim_ids else None %}
     {% if primary %}{{ primary.statement }} {% endif %}<span class="badge status-{{ c.confidence.status | default('supported') }}">{{ (c.confidence.status | default('supported')) | replace('_',' ') }}</span>{{ refs(c.claim_ids) }}
+    {% if primary and primary.scope_label %}<div class="scope-label">{{ primary.scope_label }}</div>{% endif %}
   {% else %}<span class="muted">not found</span>{% endif %}
 {% endmacro %}
 
@@ -96,7 +98,8 @@
     {% if c.revenue_model %}<div class="field"><span class="field-label">Revenue model</span> {{ status(c.revenue_model) }}</div>{% endif %}
     {% if c.revenue %}<div class="field"><span class="field-label">Revenue</span> {{ status(c.revenue) }}</div>{% endif %}
     {% if c.is_target and c.profitability %}<div class="field"><span class="field-label">Profitability</span> {{ status(c.profitability) }}</div>{% endif %}
-    {% if c.funding_or_cap %}<div class="field"><span class="field-label">Funding / market cap</span> {{ status(c.funding_or_cap) }}</div>{% endif %}
+    {% if c.funding %}<div class="field"><span class="field-label">Funding raised</span> {{ status(c.funding) }}</div>{% endif %}
+    {% if c.market_cap_or_valuation %}<div class="field"><span class="field-label">Market cap / valuation</span> {{ status(c.market_cap_or_valuation) }}</div>{% endif %}
     {% if c.is_target and c.recent_events %}<div class="field"><span class="field-label">Recent events</span> {{ status(c.recent_events) }}</div>{% endif %}
   </div>
 {% endfor %}

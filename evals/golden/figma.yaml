@@ -1,5 +1,5 @@
 # Golden company 6/10 (ADR 0011). Recently public (IPO'd 2025-07) — tests
-# freshly-changed financials.funding_or_cap.
+# freshly-changed financials.market_cap_or_valuation.
 name: Figma
 public: true
 industry: Design SaaS
@@ -15,7 +15,7 @@ facts:
   financials.revenue:
     value: "Q2 2026 revenue $370.1M (+48% YoY); TTM ~$1.16B as of 2026-03-31"
     source_url: https://www.tradingview.com/symbols/NYSE-FIG/
-  financials.funding_or_cap:
+  financials.market_cap_or_valuation:
     value: "Public (NYSE: FIG, IPO'd 2025-07); market cap ~$13-14B as of Aug 2026"
     source_url: https://www.tradingview.com/symbols/NYSE-FIG/
     tolerance: "verify against a live quote"

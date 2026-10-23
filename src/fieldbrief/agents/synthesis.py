@@ -20,7 +20,8 @@ COMPARISON_DIMENSIONS: list[tuple[str, str]] = [
     ("customer_segments", "Customer segments"),
     ("revenue_model", "Revenue model"),
     ("revenue", "Revenue"),
-    ("funding_or_cap", "Funding / market cap"),
+    ("funding", "Funding raised"),
+    ("market_cap_or_valuation", "Market cap / valuation"),
 ]
 
 

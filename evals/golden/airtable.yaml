@@ -18,8 +18,11 @@ facts:
     value: "ARR ~$478M (2024, +27% YoY from $375M in 2023)"
     source_url: https://stockanalysis.com/private/airtable/
     tolerance: "no later official figure found — may be stale by eval time"
-  financials.funding_or_cap:
-    value: "Acquired by Bending Spoons for $2.25B (closed 2026-08-04), down from an $11B Dec 2021 peak valuation; ~$1.4B total funding raised prior"
+  financials.market_cap_or_valuation:
+    value: "Acquired by Bending Spoons for $2.25B (closed 2026-08-04), down from an $11B Dec 2021 peak valuation"
+    source_url: https://dealroom.co/charts/airtable-bending-spoons.html
+  financials.funding:
+    value: "~$1.4B total funding raised prior to the Bending Spoons acquisition"
     source_url: https://dealroom.co/charts/airtable-bending-spoons.html
 
 competitors:

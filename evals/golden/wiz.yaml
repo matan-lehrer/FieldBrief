@@ -10,10 +10,13 @@ facts:
   profile.hq_founded:
     value: "New York City, USA; founded 2020"
     source_url: https://builtinnyc.com/articles/wiz-raises-300m-valuation-10b-hiring
-  financials.funding_or_cap:
-    value: "Acquired by Alphabet for ~$32B (closed 2026-03-11); ~$1.9B total funding raised prior"
+  financials.market_cap_or_valuation:
+    value: "Acquired by Alphabet for ~$32B (closed 2026-03-11)"
     source_url: https://abc.xyz/investor/news/news-details/2026/Google-Completes-Acquisition-of-Wiz-2026-ta7OaU2uA0/default.aspx
     tolerance: "headline price varies $29.5B-$32B across press vs. Alphabet's own 10-Q"
+  financials.funding:
+    value: "~$1.9B total funding raised prior to the Alphabet acquisition"
+    source_url: https://abc.xyz/investor/news/news-details/2026/Google-Completes-Acquisition-of-Wiz-2026-ta7OaU2uA0/default.aspx
 
 competitors:
   - Palo Alto Networks

@@ -15,7 +15,7 @@ facts:
     value: "TTM ~$2.13B as of 2026-06-30"
     source_url: https://pitchbook.com/profiles/company/51726-07
     tolerance: "+/- 10%"
-  financials.funding_or_cap:
+  financials.market_cap_or_valuation:
     value: "Public (NASDAQ: WIX); market cap ~$3.4-3.6B as of Sept 2026"
     source_url: https://pitchbook.com/profiles/company/51726-07
     tolerance: "wide — sources disagree $3.17B-$4.76B across snapshots; verify against a live quote"

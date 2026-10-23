@@ -37,7 +37,8 @@
   .badge.low, .badge.sustained_advantage, .badge.temporary_advantage, .badge.priority-low, .badge.status-strong, .badge.status-supported { background: var(--good-soft); color: var(--good); }
   .badge.medium, .badge.parity, .badge.priority-medium, .badge.unexploited_advantage, .badge.status-unverified { background: var(--warn-soft); color: var(--warn); }
   .badge.high, .badge.competitive_disadvantage, .badge.priority-high, .badge.status-conflicting { background: var(--bad-soft); color: var(--bad); }
-  .badge.insufficient_evidence { background: var(--line-soft); color: var(--muted); }
+  .badge.insufficient_evidence, .badge.status-different_scope { background: var(--line-soft); color: var(--muted); }
+  .scope-label { font-size: 11.5px; color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
   th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
@@ -133,6 +134,7 @@
   {% if c %}
     {% set primary = claims.get(c.claim_ids[0]) if c.claim_ids else None %}
     {% if primary %}<div class="citation-value">{{ primary.statement }}</div>{% endif %}
+    {% if primary and primary.scope_label %}<div class="scope-label">{{ primary.scope_label }}</div>{% endif %}
     <div class="citation">
       <span class="badge status-{{ c.confidence.status | default('supported') }}">{{ (c.confidence.status | default('supported')) | replace('_', ' ') }}</span>
       {{ sources_popover(c.claim_ids) }}
@@ -183,11 +185,12 @@
     {% if c.is_target and c.profitability %}
     <div class="field"><span class="field-label">Profitability</span>{{ citation(c.profitability) }}</div>
     {% endif %}
-    {% if c.funding_or_cap %}<div class="field"><span class="field-label">Funding / market cap</span>{{ citation(c.funding_or_cap) }}</div>{% endif %}
+    {% if c.funding %}<div class="field"><span class="field-label">Funding raised</span>{{ citation(c.funding) }}</div>{% endif %}
+    {% if c.market_cap_or_valuation %}<div class="field"><span class="field-label">Market cap / valuation</span>{{ citation(c.market_cap_or_valuation) }}</div>{% endif %}
     {% if c.is_target and c.recent_events %}
     <div class="field"><span class="field-label">Recent events</span>{{ citation(c.recent_events) }}</div>
     {% endif %}
-    {% if not (c.industry or c.ticker or c.hq or c.founded or c.employees or c.products or c.customer_segments or c.revenue_model or c.revenue or c.profitability or c.funding_or_cap or c.recent_events) %}
+    {% if not (c.industry or c.ticker or c.hq or c.founded or c.employees or c.products or c.customer_segments or c.revenue_model or c.revenue or c.profitability or c.funding or c.market_cap_or_valuation or c.recent_events) %}
     <p class="gap">No further details found — see "Not found" below.</p>
     {% endif %}
   </div>

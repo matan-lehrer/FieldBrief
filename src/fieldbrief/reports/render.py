@@ -23,7 +23,8 @@ _SNAPSHOT_CITATION_FIELDS = (
     "revenue_model",
     "revenue",
     "profitability",
-    "funding_or_cap",
+    "funding",
+    "market_cap_or_valuation",
     "recent_events",
     "employees",
 )
@@ -72,6 +73,15 @@ def _published_date(source: Source) -> str | None:
     return source.published_at.date().isoformat() if source.published_at else None
 
 
+def _scope_label(value: dict[str, Any]) -> str | None:
+    parts = [
+        str(value[k])
+        for k in ("entity_name", "scope", "period", "currency")
+        if value.get(k) not in (None, "unknown")
+    ]
+    return " · ".join(parts) if parts else None
+
+
 async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[str, dict[str, Any]]:
     if not claim_ids:
         return {}
@@ -88,6 +98,7 @@ async def build_claims_map(session: AsyncSession, claim_ids: set[str]) -> dict[s
             "source_type": sources[c.source_id].source_type,
             "publisher": _publisher_label(sources[c.source_id]),
             "published_at": _published_date(sources[c.source_id]),
+            "scope_label": _scope_label(c.value),
         }
         for c in claims
         if c.source_id in sources
