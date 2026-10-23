@@ -33,6 +33,16 @@ from fieldbrief.reports.schema import DEFAULT_AUDIENCE, Audience
 _NULL_PROGRESS = NullProgressSink()
 
 
+def _competitor_coverage(competitor_count: int, competitors: list[Company]) -> str:
+    if competitor_count == 0:
+        return "not_requested"
+    if not competitors:
+        return "none"
+    if len(competitors) < competitor_count:
+        return "partial"
+    return "full"
+
+
 async def _resolve_competitor(
     name: str, *, wikidata_client: httpx.AsyncClient, session: AsyncSession
 ) -> Company | None:
@@ -173,6 +183,8 @@ async def run_report(
             competitors.append(resolved)
         await session.commit()
 
+    competitor_coverage = _competitor_coverage(competitor_count, competitors)
+
     companies = [target_company, *competitors]
     await progress.emit(Stage.RESEARCHING, f"Researching {len(companies)} companies")
     results = await asyncio.gather(
@@ -215,7 +227,7 @@ async def run_report(
             "company_id": result["company_id"],
             "field": gap["field"],
             "attempts": gap["attempts"],
-            "reason": "not_found",
+            "reason": gap.get("reason", "not_found"),
         }
         for result in results
         for gap in result.get("exhausted_gaps", [])
@@ -241,6 +253,8 @@ async def run_report(
         gaps=all_gaps,
         audience=audience,
     )
+
+    report_json["meta"]["competitor_coverage"] = competitor_coverage
 
     has_budget_cutoff = any(g["reason"] == "budget_cutoff" for g in all_gaps)
     synthesis_budget_cutoff = report_json["meta"]["synthesis_budget_cutoff"]

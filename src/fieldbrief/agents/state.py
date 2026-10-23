@@ -8,6 +8,10 @@ class Gap(TypedDict):
     attempts: int
 
 
+class ExhaustedGap(Gap):
+    reason: str
+
+
 class GraphState(TypedDict):
     report_id: str
     company_id: str
@@ -18,6 +22,6 @@ class GraphState(TypedDict):
     tier: Tier
     retry_round: int
     gaps: list[Gap]
-    exhausted_gaps: list[Gap]
+    exhausted_gaps: list[ExhaustedGap]
     claim_ids: list[str]
     company_snapshot: dict[str, Any] | None

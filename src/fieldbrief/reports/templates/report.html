@@ -271,7 +271,21 @@
 </section>
 {% endif %}
 
-{% if report.comparison.rows %}
+{% if report.meta.competitor_coverage == "none" %}
+<section id="coverage-note">
+<div class="card reveal" style="border-left: 3px solid var(--warn);">
+  <p><strong>Competitor research incomplete.</strong> No competitors could be confirmed for this report — treat this as a company briefing, not a competitive comparison.</p>
+</div>
+</section>
+{% elif report.meta.competitor_coverage == "partial" %}
+<section id="coverage-note">
+<div class="card reveal" style="border-left: 3px solid var(--warn);">
+  <p><strong>Competitor coverage is partial.</strong> Fewer competitors were confirmed than this report tier normally covers.</p>
+</div>
+</section>
+{% endif %}
+
+{% if report.comparison.rows and report.companies | length > 1 %}
 <section id="comparison">
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>Comparison</h2>
 <table class="card reveal">
@@ -346,7 +360,7 @@
 <h2><span class="section-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span>Not found</h2>
 <p class="gaps-list reveal">
   {% for g in report.gaps %}
-    {{ g.field }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}
+    {{ field_label(g.field) }} ({{ g.reason | replace("_", " ") }}){% if not loop.last %}, {% endif %}
   {% endfor %}
 </p>
 </section>

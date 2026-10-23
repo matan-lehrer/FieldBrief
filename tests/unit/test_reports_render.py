@@ -90,7 +90,7 @@ def test_render_report_html_includes_company_name_and_gap() -> None:
 
     assert "Acme Corp" in html
     assert "Acme makes widgets." in html
-    assert "financials.revenue" in html
+    assert "Revenue (not found)" in html  # the gap, as a human label, not the raw field key
     assert "{{" not in html and "{%" not in html
 
 
@@ -230,7 +230,7 @@ def test_render_pdf_html_has_content_parity_with_the_web_report() -> None:
 
     assert "Acme Corp" in html
     assert "Acme makes widgets for small businesses." in html
-    assert "financials.revenue" in html  # the gap, same as the web report
+    assert "Revenue (not found)" in html  # the gap, same as the web report
     assert "[1]" in html  # a numbered source reference, print has no hover
     assert "Acme Newsroom" in html  # the Sources list at the end
     assert "{{" not in html and "{%" not in html
@@ -265,6 +265,38 @@ def test_executive_brief_finding_with_an_overreach_flag_shows_a_caveat() -> None
 
     assert "overreach-caveat" in html
     assert "limited evidence" in html
+
+
+def test_gap_label_is_human_readable_not_a_raw_field_key() -> None:
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+
+    html = render_report_html(report, {}, "Acme Corp")
+
+    assert "Revenue (not found)" in html
+    assert "financials.revenue" not in html
+
+
+def test_no_competitors_found_shows_an_incomplete_coverage_banner_not_a_fake_comparison() -> None:
+    """Zero confirmed competitors must read as "research incomplete," never
+    as a silent single-company table presented like a real comparison."""
+    target_id = str(uuid.uuid4())
+    report = _minimal_report(target_id)
+    report["meta"]["competitor_coverage"] = "none"
+    report["comparison"] = {
+        "rows": [
+            {
+                "dimension": "revenue",
+                "label": "Revenue",
+                "cells": [{"company_id": target_id, "citation": None}],
+            }
+        ]
+    }
+
+    html = render_report_html(report, {}, "Acme Corp")
+
+    assert "Competitor research incomplete" in html
+    assert '<section id="comparison">' not in html
 
 
 def test_render_pdf_html_handles_a_report_with_no_resolvable_claims() -> None:

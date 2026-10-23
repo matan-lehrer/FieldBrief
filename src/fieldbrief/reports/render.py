@@ -7,6 +7,7 @@ from jinja2 import ChainableUndefined, Environment, FileSystemLoader, select_aut
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fieldbrief.agents.field_checklist import field_label
 from fieldbrief.db.models import Claim, Source
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -15,6 +16,7 @@ _env = Environment(
     autoescape=select_autoescape(["html"]),
     undefined=ChainableUndefined,
 )
+_env.globals["field_label"] = field_label
 
 _SNAPSHOT_CITATION_FIELDS = (
     "description",
