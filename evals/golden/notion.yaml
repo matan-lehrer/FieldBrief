@@ -39,7 +39,10 @@ key_points:
     - "Clarify enterprise security/compliance story to compete with Confluence"
     - "Monetize newly launched AI/agent features"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: employee count
+# has the widest source disagreement in this golden set (1,200 to 7,774
+# across trackers).
 known_gaps:
-  - "Exact current employee count — widest source disagreement in this golden set (1,200 to 7,774 across trackers)"
-  - "Exact current valuation"
-  - "A specific dated news event in the last 12 months"
+  - "profile.employees"
+  - "financials.market_cap_or_valuation"
+  - "events.recent"

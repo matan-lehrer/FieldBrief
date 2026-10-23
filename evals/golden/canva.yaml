@@ -43,6 +43,7 @@ key_points:
     - "Prepare IPO-readiness (audited financials, governance) if the speculated listing is pursued"
     - "Differentiate further from Figma by deepening non-designer / team-collaboration features"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: no confirmed IPO
+# filing/prospectus exists yet, so no audited financials either.
 known_gaps:
-  - "No confirmed IPO filing/prospectus exists yet, so no audited financials"
-  - "Exact current valuation (meaningful range across sources)"
+  - "financials.market_cap_or_valuation"

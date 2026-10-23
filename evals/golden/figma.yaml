@@ -40,6 +40,8 @@ key_points:
     - "Resolve AI-training-data litigation risk transparently to preserve customer trust"
     - "Continue leveraging the collaborative-editing moat against Canva's design-tool expansion"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: minority-
+# shareholder governance influence beyond the founder's ~73.6% voting
+# control isn't tracked as its own field.
 known_gaps:
-  - "Precise current employee count"
-  - "Minority-shareholder governance influence beyond the founder's ~73.6% voting control"
+  - "profile.employees"

@@ -39,6 +39,9 @@ key_points:
     - "Evaluate the reported PayPal acquisition bid's strategic fit beyond scale"
     - "Continue enterprise expansion to reduce reliance on SMB/startup segment"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: valuation figures
+# from $106.7B to $159B circulate; profitability is described qualitatively,
+# no hard margin number disclosed.
 known_gaps:
-  - "Exact current valuation (figures from $106.7B to $159B circulating)"
-  - "Precise net profit margin (described qualitatively as profitable, no hard number)"
+  - "financials.market_cap_or_valuation"
+  - "financials.profitability"

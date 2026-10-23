@@ -38,6 +38,8 @@ key_points:
     - "Continue diversifying revenue beyond restaurant delivery into grocery/retail"
     - "Monitor margin trends given historically thin profitability in food delivery"
 
+# known_gaps are field-checklist keys (ADR 0021). Nuance: market-cap
+# figures disagree by >$25B across sources.
 known_gaps:
-  - "A clean, single, current market-cap figure (sources disagree by >$25B)"
-  - "A specific dated (last 12 months) DoorDash-specific M&A/competitive news event"
+  - "financials.market_cap_or_valuation"
+  - "events.recent"
